@@ -48,13 +48,15 @@ const TIPOLOGIA_EDIFICIO = ["", "Di pregio", "Signorile", "Civile-medio", "Popol
 
 const FACILITA_ACCESSO = ["", "Molto comodo", "Nella media", "Difficilmente raggiungibile", "Impervio"];
 
-const LIVELLI_IMMOBILE = ["", "1", "2", "3", "4", "5"];
+const LIVELLI_IMMOBILE = ["", "Disposto principalmente su 1 livello", "Disposto principalmente su 2 livelli", "Disposto principalmente su 3 livelli", "Disposto principalmente su 4 livelli", "Disposto principalmente su 5 livelli"];
 
-const ALTRI_VANI = ["", "Mansarda", "Taverna", "Seminterrato", "Sottotetto"];
+const ALTRI_VANI = ["", "Mansarda", "Taverna", "Seminterrato", "Sottotetto", "Soppalco"];
 
 const IMP_ELETTRICO = ["", "Certificato", "Funzionante", "Da rifare"];
 
 const IMP_ACQUA_CALDA = ["", "Autonoma boiler elettrico", "Autonoma pompa di calore", "Autonoma caldaia", "Centralizzata", "Da rifare"];
+
+const IMP_GAS = ["", "Certificato", "Funzionante", "Assente"];
 
 const ZONE_TRIESTE = [
   "", "Centro Storico", "Borgo Giuseppino", "Borgo Teresiano", "San Vito",
@@ -67,9 +69,12 @@ const ZONE_TRIESTE = [
 const initialFormData = {
   agenzia_nome: "", agenzia_indirizzo: "", agenzia_telefono: "", agenzia_email: "",
   agenzia_colore: "#1a3a5c", agenzia_logo: null, agenzia_modus_operandi: "",
+  copertina_img: null, titolo_valutazione: "Valutazione Immobiliare",
   agente_nome: "", agente_telefono: "", agente_email: "",
   tipologia: "Appartamento", indirizzo: "", civico: "", cap: "34100", citta: "Trieste",
-  zona: "", piano: "", totale_piani: "", interno: "", scala: "",
+  zona: "", piano: "", totale_piani: "", scala: "",
+  catasto_mappa: "", catasto_foglio: "", catasto_particella: "", catasto_subalterno: "",
+  proprietario_nome: "", proprietario_cognome: "", proprietario_telefono: "", proprietario_email: "",
   lat: null, lng: null, mappa_img: null,
   superficie_commerciale: "", locali: "", camere: "", bagni: "",
   livelli_immobile: "", altri_vani: "", altri_vani_mq: "",
@@ -81,12 +86,12 @@ const initialFormData = {
   condizioni_facciate: "", tipologia_edificio: "",
   condizioni_tetto: "", condizioni_atrio: "", spese_condominiali: "", facilita_accesso: "",
   area_verde_condominiale: false, parcheggi_condominiali: false,
-  imp_elettrico: "", imp_acqua_calda: "", cappotto: false,
+  imp_elettrico: "", imp_acqua_calda: "", imp_gas: "", cappotto: false,
   ascensore: false, aria_condizionata: false, pannelli_fotovoltaici: false,
-  senza_barriere: false,
+  senza_barriere: false, caminetto: false,
   valore_min: "", valore_medio: "", valore_max: "",
   note_valutazione: "", descrizione_manuale: "",
-  testo_mercato: "", testo_zona: "", testo_zona_generata_per: "",
+  testo_mercato: "", testo_zona: "", testo_zona_generata_per: "", servizi_zona: "",
   pertinenze: [],
   data_valutazione: new Date().toISOString().split("T")[0],
 };
@@ -261,7 +266,34 @@ export default function ValutazioneImmobili() {
     const zonaBase = form.zona && zoneTexts[form.zona] ? zoneTexts[form.zona] : "La zona in cui è ubicato l'immobile presenta caratteristiche residenziali con una dotazione di servizi adeguata alle esigenze abitative.";
     const zona = `L'immobile oggetto di valutazione è ubicato nella zona ${form.zona || "—"} di Trieste. ${zonaBase}`;
 
-    return { mercato, zona };
+    const serviziDefaults = {
+      "Centro Storico": "Scuole di ogni ordine e grado, ospedale Maggiore, Teatro Verdi, tutti i servizi commerciali di primo livello, 8+ linee bus, parcheggi a pagamento",
+      "Borgo Teresiano": "Stazione Ferroviaria Centrale, Canal Grande, scuole, supermercati, librerie storiche, caffè letterari, ottimi collegamenti bus",
+      "Borgo Giuseppino": "Cattedrale di San Giusto, Castello, Museo Civico, scuole, negozi artigianali, ristoranti",
+      "San Vito": "Porto Vecchio in riqualificazione, scuole primarie, negozi di vicinato, collegamento bus verso centro",
+      "Città Vecchia": "Teatro Romano, gallerie d'arte, ristoranti, locali serali, tutti i servizi del centro storico",
+      "Cavana": "Molo Audace, Porto Vecchio in riqualificazione, locali, ristoranti, vita culturale",
+      "Barcola": "Passeggiata lungomare, Castello di Miramare, Riserva Naturale Marina, piste ciclabili, scuole, parco Villa Revoltella",
+      "San Giacomo": "Mercato rionale all'aperto, scuole di ogni ordine, supermercati, ambulatori, farmacia, 5+ linee bus",
+      "Roiano": "Parco Villa Giulia, scuole, negozi di vicinato, bus verso centro e Barcola, aree verdi",
+      "Gretta": "Strada costiera, scuole, supermercati, collegamento diretto con Barcola e passeggiata",
+      "Scorcola": "Vista panoramica, scuole, aree verdi, parcheggi, bus verso centro",
+      "Chiadino": "Scuole, negozi di vicinato, aree verdi, bus, accesso rapido al Carso",
+      "Barriera Nuova": "Zona semicentrale, scuole, supermercati, uffici postali, banche, 4+ linee bus",
+      "Barriera Vecchia": "Vicinanza Stazione FS, mercato multietnico, negozi, scuole, bus",
+      "Ponziana": "Scuole, ambulatori, supermercati, farmacia, bus verso centro",
+      "Rozzol": "Scuole, aree verdi, parcheggi disponibili, bus, posizione collinare panoramica",
+      "San Giovanni": "Parco di San Giovanni, Università degli Studi, strutture ospedaliere, scuole, bus",
+      "Cologna": "Scuole, supermercati, ambulatorio, farmacia, bus verso centro",
+      "Servola": "Scuole, negozi di vicinato, bus, area portuale in riqualificazione",
+      "Muggia": "Centro storico veneziano, porto turistico, spiagge, scuole, tutti i servizi, Carnevale Muggesano",
+      "Opicina": "Tram de Opcina, osmize carsiche, Strada Napoleonica, scuole, immersa nel verde del Carso",
+      "Basovizza": "Sincrotrone Elettra, centro ICTP, sentieri del Carso, scuole primarie, Monumento Nazionale Foiba",
+      "Prosecco": "Osmize tradizionali, sentieri escursionistici, vicinanza Val Rosandra, bus, scuola primaria",
+    };
+    const servizi = form.zona && serviziDefaults[form.zona] ? serviziDefaults[form.zona] : "Servizi di base presenti nella zona.";
+
+    return { mercato, zona, servizi };
   };
 
   const steps = [
@@ -381,6 +413,41 @@ export default function ValutazioneImmobili() {
               </div>
             )}
             <div style={{ marginTop: 16 }}>
+              <Field label="Titolo Valutazione (appare in copertina)" full>
+                <input style={inputStyle} value={form.titolo_valutazione} onChange={(e) => update("titolo_valutazione", e.target.value)} placeholder="Valutazione Immobiliare" />
+              </Field>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <Field label="Immagine di Copertina Report" full>
+                <input id="copertinaUpload" type="file" accept="image/jpeg,image/jpg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => update("copertina_img", ev.target.result);
+                  reader.readAsDataURL(file);
+                }} />
+                <button
+                  onClick={() => document.getElementById("copertinaUpload")?.click()}
+                  style={{
+                    padding: "14px 24px", borderRadius: 10, width: "100%",
+                    border: form.copertina_img ? `2px solid ${accent}40` : "2px dashed var(--border)",
+                    background: form.copertina_img ? `${accent}08` : "var(--input-bg)",
+                    cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "var(--font-body)",
+                    color: form.copertina_img ? accent : "var(--text-secondary)",
+                    display: "flex", alignItems: "center", gap: 8, justifyContent: "center",
+                  }}
+                >
+                  {form.copertina_img ? "✓ Immagine caricata — Clicca per sostituire" : "🖼️ Carica immagine di copertina"}
+                </button>
+                {form.copertina_img && (
+                  <div style={{ marginTop: 10, position: "relative" }}>
+                    <img src={form.copertina_img} alt="Copertina" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 10, border: "1.5px solid var(--border)", display: "block" }} />
+                    <button onClick={() => update("copertina_img", null)} style={{ position: "absolute", top: 8, right: 8, background: "#fee", border: "1px solid #fcc", borderRadius: 6, color: "#c33", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontFamily: "var(--font-body)" }}>✕ Rimuovi</button>
+                  </div>
+                )}
+              </Field>
+            </div>
+            <div style={{ marginTop: 16 }}>
               <Field label="Modus Operandi / Criteri di Valutazione" full>
                 <textarea style={{ ...inputStyle, minHeight: 110, resize: "vertical" }} value={form.agenzia_modus_operandi} onChange={(e) => update("agenzia_modus_operandi", e.target.value)} placeholder="Descrivi la metodologia e i criteri utilizzati per le valutazioni immobiliari. Es: La valutazione viene effettuata attraverso il metodo comparativo di mercato, analizzando le compravendite recenti di immobili simili nella medesima zona..." />
               </Field>
@@ -410,7 +477,28 @@ export default function ValutazioneImmobili() {
             </Row>
             <Row>
               <Field label="Piano" half><input style={inputStyle} value={form.piano} onChange={(e) => update("piano", e.target.value)} placeholder="3" /></Field>
-              <Field label="Interno" half><input style={inputStyle} value={form.interno} onChange={(e) => update("interno", e.target.value)} placeholder="7" /></Field>
+            </Row>
+
+            {/* Dati Catastali */}
+            <SubLabel>Dati Catastali</SubLabel>
+            <Row>
+              <Field label="Mappa" third><input style={inputStyle} value={form.catasto_mappa} onChange={(e) => update("catasto_mappa", e.target.value)} placeholder="1" /></Field>
+              <Field label="Foglio" third><input style={inputStyle} value={form.catasto_foglio} onChange={(e) => update("catasto_foglio", e.target.value)} placeholder="12" /></Field>
+              <Field label="Particella" third><input style={inputStyle} value={form.catasto_particella} onChange={(e) => update("catasto_particella", e.target.value)} placeholder="345" /></Field>
+            </Row>
+            <Row>
+              <Field label="Subalterno" third><input style={inputStyle} value={form.catasto_subalterno} onChange={(e) => update("catasto_subalterno", e.target.value)} placeholder="6" /></Field>
+            </Row>
+
+            {/* Proprietario */}
+            <SubLabel>Dati Proprietario</SubLabel>
+            <Row>
+              <Field label="Nome" half><input style={inputStyle} value={form.proprietario_nome} onChange={(e) => update("proprietario_nome", e.target.value)} placeholder="Mario" /></Field>
+              <Field label="Cognome" half><input style={inputStyle} value={form.proprietario_cognome} onChange={(e) => update("proprietario_cognome", e.target.value)} placeholder="Rossi" /></Field>
+            </Row>
+            <Row>
+              <Field label="Telefono" half><input style={inputStyle} value={form.proprietario_telefono} onChange={(e) => update("proprietario_telefono", e.target.value)} placeholder="+39 333 1234567" /></Field>
+              <Field label="Email" half><input style={inputStyle} value={form.proprietario_email} onChange={(e) => update("proprietario_email", e.target.value)} placeholder="mario.rossi@email.it" /></Field>
             </Row>
 
             {/* ── MAPPA ── */}
@@ -570,6 +658,9 @@ export default function ValutazioneImmobili() {
               <Field label="Imp. Acqua Calda" third>
                 <Select value={form.imp_acqua_calda} onChange={(e) => update("imp_acqua_calda", e.target.value)} options={IMP_ACQUA_CALDA} />
               </Field>
+              <Field label="Imp. Gas" third>
+                <Select value={form.imp_gas} onChange={(e) => update("imp_gas", e.target.value)} options={IMP_GAS} />
+              </Field>
             </Row>
 
             <SubLabel>Qualità dell'immobile</SubLabel>
@@ -589,6 +680,7 @@ export default function ValutazioneImmobili() {
               <Toggle label="Aria Condizionata" checked={form.aria_condizionata} onChange={() => update("aria_condizionata", !form.aria_condizionata)} />
               <Toggle label="Pannelli Fotovoltaici" checked={form.pannelli_fotovoltaici} onChange={() => update("pannelli_fotovoltaici", !form.pannelli_fotovoltaici)} />
               <Toggle label="Cappotto Interno/Esterno" checked={form.cappotto} onChange={() => update("cappotto", !form.cappotto)} />
+              <Toggle label="Caminetto" checked={form.caminetto} onChange={() => update("caminetto", !form.caminetto)} />
             </div>
           </div>
         )}
@@ -725,6 +817,7 @@ export default function ValutazioneImmobili() {
               ...f,
               testo_mercato: f.testo_mercato || t.mercato,
               testo_zona: t.zona,
+              servizi_zona: t.servizi,
               testo_zona_generata_per: f.zona,
             })), 0);
           }
@@ -766,6 +859,23 @@ export default function ValutazioneImmobili() {
                   value={form.testo_zona}
                   onChange={(e) => update("testo_zona", e.target.value)}
                   placeholder="Descrizione della zona..."
+                />
+              </div>
+
+              {/* Servizi zona */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: accent, textTransform: "uppercase", letterSpacing: "0.5px" }}>Servizi Principali della Zona</label>
+                  <button onClick={() => { const t = generateTexts(); update("servizi_zona", t.servizi); }}
+                    style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${accent}40`, background: `${accent}08`, color: accent, cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "var(--font-body)" }}>
+                    🔄 Rigenera
+                  </button>
+                </div>
+                <textarea
+                  style={{ ...inputStyle, minHeight: 60, resize: "vertical", lineHeight: 1.7, fontSize: 13 }}
+                  value={form.servizi_zona}
+                  onChange={(e) => update("servizi_zona", e.target.value)}
+                  placeholder="Es. Scuole, supermercati, trasporti pubblici, aree verdi..."
                 />
               </div>
 
