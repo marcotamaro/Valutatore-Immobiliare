@@ -31,6 +31,7 @@ if (!window.storage) {
 
 export default function App() {
   const [page, setPage] = useState('form');
+  const [reportData, setReportData] = useState(null);
 
   const navStyle = (p) => ({
     padding: '10px 20px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
@@ -41,23 +42,31 @@ export default function App() {
 
   return (
     <div>
-      {/* Top Navigation */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
-        background: 'linear-gradient(135deg, #0f2539, #1a3a5c)',
-        padding: '8px 16px', display: 'flex', gap: 8, justifyContent: 'center',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
-      }}>
-        <button style={navStyle('form')} onClick={() => setPage('form')}>📝 Nuova Valutazione</button>
-        <button style={navStyle('report')} onClick={() => setPage('report')}>📄 Report</button>
-        <button style={navStyle('dashboard')} onClick={() => setPage('dashboard')}>📊 Dashboard</button>
-      </div>
+      {/* Top Navigation - hide when viewing report */}
+      {page !== 'report' && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
+          background: 'linear-gradient(135deg, #0f2539, #1a3a5c)',
+          padding: '8px 16px', display: 'flex', gap: 8, justifyContent: 'center',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+        }}>
+          <button style={navStyle('form')} onClick={() => setPage('form')}>📝 Nuova Valutazione</button>
+          <button style={navStyle('dashboard')} onClick={() => setPage('dashboard')}>📊 Dashboard</button>
+        </div>
+      )}
 
-      {/* Content with top padding for fixed nav */}
-      <div style={{ paddingTop: 52 }}>
+      {/* Content */}
+      <div style={{ paddingTop: page !== 'report' ? 52 : 0 }}>
         {page === 'form' && <ValutazioneImmobili />}
-        {page === 'report' && <ReportValutazione />}
-        {page === 'dashboard' && <Dashboard />}
+        {page === 'dashboard' && (
+          <Dashboard onViewReport={(v) => { setReportData(v); setPage('report'); }} />
+        )}
+        {page === 'report' && (
+          <ReportValutazione 
+            initialData={reportData} 
+            onBack={() => { setReportData(null); setPage('dashboard'); }} 
+          />
+        )}
       </div>
     </div>
   );
