@@ -9,9 +9,15 @@ const fmtDate = (d) => {
   try { return new Date(d + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" }); }
   catch { return d; }
 };
-const mainVal = (v) => Number(v.valore_medio || v.valore_min || v.valore_max || 0);
+const mainVal = (v) => {
+  if (v.valore_medio) return Number(v.valore_medio);
+  const min = Number(v.valore_min || 0);
+  const max = Number(v.valore_max || 0);
+  if (min && max) return Math.round((min + max) / 2);
+  return min || max || 0;
+};
 
-export default function Dashboard() {
+export default function Dashboard({ onViewReport } = {}) {
   const [list, setList] = useState([]);
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +29,7 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState("data_desc");
   const [selected, setSelected] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [viewReport, setViewReport] = useState(null);
   const [accent, setAccent] = useState("#1a3a5c");
 
   // Agent form
@@ -101,8 +108,6 @@ export default function Dashboard() {
   const stats = {
     totale: list.length, filtrate: filtered.length,
     valMedio: filtered.length > 0 ? Math.round(filtered.reduce((s, v) => s + mainVal(v), 0) / filtered.length) : 0,
-    valMax: filtered.length > 0 ? Math.max(...filtered.map(mainVal)) : 0,
-    valMin: filtered.length > 0 ? Math.min(...filtered.map(mainVal).filter(v => v > 0)) : 0,
     zoneCount: [...new Set(filtered.map(v => v.zona).filter(Boolean))].length,
   };
 
@@ -124,7 +129,7 @@ export default function Dashboard() {
       {/* TABS */}
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px 0" }}>
         <div style={{ display: "flex", gap: 4, background: "#e8eaf0", borderRadius: 10, padding: 3, marginBottom: 20, width: "fit-content" }}>
-          {[{ id: "valutazioni", label: "📋 Valutazioni", count: list.length }, { id: "agenti", label: "👤 Agenti", count: agents.length }].map(t => (
+          {[{ id: "valutazioni", label: "📋 Valutazioni", count: list.length }, { id: "proprietari", label: "🏠 Proprietari", count: (() => { const p = new Set(); list.forEach(v => { if (v.proprietario_cognome || v.proprietario_nome) p.add(`${v.proprietario_cognome}|${v.proprietario_nome}`); }); return p.size; })() }, { id: "agenti", label: "👤 Agenti", count: agents.length }].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               padding: "10px 22px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", transition: "all 0.2s",
               background: tab === t.id ? "#fff" : "transparent", color: tab === t.id ? accent : "#888", boxShadow: tab === t.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
@@ -143,8 +148,6 @@ export default function Dashboard() {
               { label: "Totali", value: stats.totale, icon: "📋" },
               { label: "Zone", value: stats.zoneCount, icon: "📍" },
               { label: "Valore medio", value: fmt(stats.valMedio), icon: "📊" },
-              { label: "Val. min", value: stats.valMin > 0 ? fmt(stats.valMin) : "—", icon: "⬇️" },
-              { label: "Val. max", value: fmt(stats.valMax), icon: "⬆️" },
             ].map((s, i) => (
               <div key={i} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", border: "1px solid #eef0f4" }}>
                 <div style={{ fontSize: 10, color: "#999", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.icon} {s.label}</div>
@@ -179,7 +182,7 @@ export default function Dashboard() {
                         {v.zona && <span style={{ fontSize: 10, fontWeight: 600, color: "#888", background: "#f0f1f4", padding: "2px 8px", borderRadius: 4 }}>{v.zona}</span>}
                       </div>
                       <div style={{ fontSize: 15, fontWeight: 700, marginTop: 5, color: "#1a1a2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.indirizzo}{v.civico ? ` ${v.civico}` : ""}</div>
-                      <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>{fmtDate(v.data_valutazione)}{v.agente_nome ? ` · ${v.agente_nome}` : ""}{v.superficie_commerciale ? ` · ${v.superficie_commerciale} mq` : ""}</div>
+                      <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>{fmtDate(v.data_valutazione)}{v.agente_nome ? ` · ${v.agente_nome}` : ""}{v.superficie_commerciale ? ` · ${v.superficie_commerciale} mq` : ""}{(v.proprietario_cognome || v.proprietario_nome) ? ` · Propr: ${[v.proprietario_cognome, v.proprietario_nome].filter(Boolean).join(" ")}` : ""}</div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       {v.valore_medio ? <div style={{ fontSize: 18, fontWeight: 800, color: accent, fontFamily: "'Playfair Display', serif" }}>{fmt(v.valore_medio)}</div>
@@ -220,7 +223,7 @@ export default function Dashboard() {
 
                       {/* ACTIONS */}
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid #eee" }}>
-                        <button onClick={() => alert("Per visualizzare il report, apri l'artifact 'report-valutazione' e seleziona questa valutazione.")} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: accent, color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans'" }}>📄 Visualizza</button>
+                        <button onClick={async () => { try { await window.storage.set("view_report_data", JSON.stringify(v)); } catch(e) {} if (onViewReport) onViewReport(v); else alert("Valutazione pronta! Apri l'artifact 'report-valutazione' per visualizzare il report."); }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: accent, color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans'" }}>📄 Visualizza</button>
                         <button onClick={() => loadForEdit(v)} style={{ padding: "7px 16px", borderRadius: 8, border: `1.5px solid ${accent}40`, background: "#fff", color: accent, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans'" }}>✏️ Modifica</button>
                         <button onClick={() => duplicateValutazione(v)} style={{ padding: "7px 16px", borderRadius: 8, border: "1.5px solid #d0d5dd", background: "#fff", color: "#555", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans'" }}>📋 Duplica</button>
                         <button onClick={() => setConfirmDelete(v.id)} style={{ padding: "7px 16px", borderRadius: 8, border: "1.5px solid #fcc", background: "#fff", color: "#c33", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans'", marginLeft: "auto" }}>🗑️ Elimina</button>
@@ -261,6 +264,76 @@ export default function Dashboard() {
             </div>
           )}
         </>)}
+
+        {/* ═══════════ TAB: PROPRIETARI ═══════════ */}
+        {tab === "proprietari" && (() => {
+          // Build unique proprietari list from valutazioni
+          const propMap = {};
+          list.forEach(v => {
+            if (!v.proprietario_cognome && !v.proprietario_nome) return;
+            const key = `${(v.proprietario_cognome || "").trim().toLowerCase()}|${(v.proprietario_nome || "").trim().toLowerCase()}`;
+            if (!propMap[key]) {
+              propMap[key] = {
+                nome: v.proprietario_nome || "",
+                cognome: v.proprietario_cognome || "",
+                telefono: v.proprietario_telefono || "",
+                email: v.proprietario_email || "",
+                valutazioni: [],
+              };
+            }
+            // Update contact info if more recent
+            if (v.proprietario_telefono) propMap[key].telefono = v.proprietario_telefono;
+            if (v.proprietario_email) propMap[key].email = v.proprietario_email;
+            propMap[key].valutazioni.push(v);
+          });
+          const proprietari = Object.values(propMap).sort((a, b) => a.cognome.localeCompare(b.cognome));
+
+          return (<>
+            <div style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>{proprietari.length} proprietari associati a valutazioni</div>
+
+            {proprietari.length === 0 ? (
+              <div style={{ background: "#fff", borderRadius: 12, padding: 40, textAlign: "center", color: "#999", fontSize: 14, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                Nessun proprietario trovato. Compila i dati proprietario nelle valutazioni.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {proprietari.map((p, pi) => (
+                  <div key={pi} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", border: "1px solid #eef0f4" }}>
+                    <div style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: "#1a1a2e" }}>{p.cognome} {p.nome}</div>
+                        <div style={{ fontSize: 12, color: "#999", marginTop: 3 }}>
+                          {[p.telefono, p.email].filter(Boolean).join(" · ") || "Nessun contatto"}
+                        </div>
+                      </div>
+                      <div style={{ background: `${accent}12`, padding: "6px 14px", borderRadius: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{p.valutazioni.length}</span>
+                        <span style={{ fontSize: 11, color: accent, marginLeft: 4 }}>valutazion{p.valutazioni.length === 1 ? "e" : "i"}</span>
+                      </div>
+                    </div>
+                    {/* Valutazioni del proprietario */}
+                    <div style={{ borderTop: "1px solid #f0f1f4", padding: "0 20px 12px" }}>
+                      {p.valutazioni.map(v => (
+                        <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f8f8f8", fontSize: 13 }}>
+                          <div>
+                            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: accent, background: `${accent}12`, padding: "1px 6px", borderRadius: 3, marginRight: 8 }}>{v.tipologia}</span>
+                            <span style={{ fontWeight: 600 }}>{v.indirizzo}{v.civico ? ` ${v.civico}` : ""}</span>
+                            {v.zona && <span style={{ color: "#999", marginLeft: 8 }}>{v.zona}</span>}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span style={{ fontWeight: 700, color: accent }}>{fmt(mainVal(v))}</span>
+                            <span style={{ fontSize: 11, color: "#bbb" }}>{fmtDate(v.data_valutazione)}</span>
+                            <button onClick={async () => { try { await window.storage.set("view_report_data", JSON.stringify(v)); } catch(e) {} if (onViewReport) onViewReport(v); }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: accent, color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans'" }}>📄</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>);
+        })()}
 
         {/* ═══════════ TAB: AGENTI ═══════════ */}
         {tab === "agenti" && (<>
