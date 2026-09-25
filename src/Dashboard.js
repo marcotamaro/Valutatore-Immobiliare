@@ -26,6 +26,8 @@ export default function Dashboard({ onViewReport } = {}) {
   const [filterTipo, setFilterTipo] = useState("");
   const [filterAgente, setFilterAgente] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
+  const [filterDataDa, setFilterDataDa] = useState("");
+  const [filterDataA, setFilterDataA] = useState("");
   const [sortBy, setSortBy] = useState("data_desc");
   const [selected, setSelected] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -91,7 +93,9 @@ export default function Dashboard({ onViewReport } = {}) {
     if (filterZona && v.zona !== filterZona) return false;
     if (filterTipo && v.tipologia !== filterTipo) return false;
     if (filterAgente && v.agente_nome !== filterAgente) return false;
-    if (filterSearch) { const s = filterSearch.toLowerCase(); if (!`${v.indirizzo} ${v.civico} ${v.zona} ${v.tipologia} ${v.agente_nome}`.toLowerCase().includes(s)) return false; }
+    if (filterDataDa && v.data_valutazione && v.data_valutazione < filterDataDa) return false;
+    if (filterDataA && v.data_valutazione && v.data_valutazione > filterDataA) return false;
+    if (filterSearch) { const s = filterSearch.toLowerCase(); if (!`${v.indirizzo} ${v.civico} ${v.zona} ${v.tipologia} ${v.agente_nome} ${v.proprietario_cognome} ${v.proprietario_nome}`.toLowerCase().includes(s)) return false; }
     return true;
   });
   filtered.sort((a, b) => {
@@ -158,12 +162,14 @@ export default function Dashboard({ onViewReport } = {}) {
 
           {/* Filters */}
           <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-            <div style={{ flex: "1 1 180px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Cerca</label><input style={iS} value={filterSearch} onChange={e => setFilterSearch(e.target.value)} placeholder="Indirizzo, zona..." /></div>
+            <div style={{ flex: "1 1 180px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Cerca</label><input style={iS} value={filterSearch} onChange={e => setFilterSearch(e.target.value)} placeholder="Indirizzo, zona, proprietario..." /></div>
+            <div style={{ flex: "0 1 130px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Dal</label><input type="date" style={iS} value={filterDataDa} onChange={e => setFilterDataDa(e.target.value)} /></div>
+            <div style={{ flex: "0 1 130px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Al</label><input type="date" style={iS} value={filterDataA} onChange={e => setFilterDataA(e.target.value)} /></div>
             <div style={{ flex: "0 1 140px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Zona</label><select style={sS} value={filterZona} onChange={e => setFilterZona(e.target.value)}><option value="">Tutte</option>{zones.map(z => <option key={z}>{z}</option>)}</select></div>
             <div style={{ flex: "0 1 140px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Tipologia</label><select style={sS} value={filterTipo} onChange={e => setFilterTipo(e.target.value)}><option value="">Tutte</option>{types.map(t => <option key={t}>{t}</option>)}</select></div>
             <div style={{ flex: "0 1 140px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Agente</label><select style={sS} value={filterAgente} onChange={e => setFilterAgente(e.target.value)}><option value="">Tutti</option>{agentNames.map(a => <option key={a}>{a}</option>)}</select></div>
             <div style={{ flex: "0 1 140px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Ordina</label><select style={sS} value={sortBy} onChange={e => setSortBy(e.target.value)}><option value="data_desc">Data ↓</option><option value="data_asc">Data ↑</option><option value="prezzo_desc">Prezzo ↓</option><option value="prezzo_asc">Prezzo ↑</option><option value="zona">Zona A-Z</option></select></div>
-            {(filterZona || filterTipo || filterSearch || filterAgente) && <button onClick={() => { setFilterZona(""); setFilterTipo(""); setFilterSearch(""); setFilterAgente(""); }} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#999", fontFamily: "'DM Sans', sans-serif" }}>✕ Reset</button>}
+            {(filterZona || filterTipo || filterSearch || filterAgente || filterDataDa || filterDataA) && <button onClick={() => { setFilterZona(""); setFilterTipo(""); setFilterSearch(""); setFilterAgente(""); setFilterDataDa(""); setFilterDataA(""); }} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#999", fontFamily: "'DM Sans', sans-serif" }}>✕ Reset</button>}
           </div>
 
           <div style={{ fontSize: 12, color: "#999", marginBottom: 10 }}>{filtered.length === list.length ? `${list.length} valutazioni` : `${filtered.length} di ${list.length}`}</div>
