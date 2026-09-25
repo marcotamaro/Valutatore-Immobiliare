@@ -159,7 +159,7 @@ export default function ReportValutazione({ initialData = null, onBack = null })
     data.bagni && ["Bagni", data.bagni],
     showField(data.livelli_immobile) && ["Livelli", data.livelli_immobile],
     data.piano && ["Piano", data.totale_piani ? `${data.piano} di ${data.totale_piani}` : data.piano],
-    showField(data.altri_vani) && ["Vani collegati", `${data.altri_vani}${data.altri_vani_mq ? ` — ${data.altri_vani_mq} mq` : ""}`],
+    ...(Array.isArray(data.altri_vani) ? data.altri_vani.map(v => [v.tipo, v.mq ? `${v.mq} mq` : "Presente"]) : (showField(data.altri_vani) ? [["Vani collegati", `${data.altri_vani}${data.altri_vani_mq ? ` — ${data.altri_vani_mq} mq` : ""}`]] : [])),
     data.balconi && Number(data.balconi) > 0 && ["Balconi", `${data.balconi}${data.balconi_mq ? ` — ${data.balconi_mq} mq` : ""}`],
     data.terrazzi && Number(data.terrazzi) > 0 && ["Terrazzi", `${data.terrazzi}${data.terrazzi_mq ? ` — ${data.terrazzi_mq} mq` : ""}`],
     data.verande && Number(data.verande) > 0 && ["Verande", `${data.verande}${data.verande_mq ? ` — ${data.verande_mq} mq` : ""}`],
@@ -225,7 +225,38 @@ export default function ReportValutazione({ initialData = null, onBack = null })
           )}
         </div>
 
-        {/* ══════ PAG 2 — LOGO + INDIRIZZO + MODUS OPERANDI ══════ */}
+        {/* ══════ PAG 2 — SOMMARIO ══════ */}
+        <div className="rp page-break" style={{ ...pg, padding: "48px 48px 40px" }}>
+          {data.agenzia_logo && <div style={{ textAlign: "center", marginBottom: 24 }}><img src={data.agenzia_logo} alt="Logo" style={{ height: 55, borderRadius: 8 }} /></div>}
+          <SH title="Indice" accent={accent} />
+          <div style={{ marginTop: 20 }}>
+            {[
+              ["1.", "Oggetto della Valutazione e Metodologia"],
+              ["2.", "Il Mercato Immobiliare a Trieste"],
+              ["3.", `Analisi della Zona: ${data.zona || "—"}`],
+              ["4.", "Scheda Tecnica dell'Immobile"],
+              data.foto_immobile && data.foto_immobile.length > 0 && ["5.", "Documentazione Fotografica"],
+              [data.foto_immobile && data.foto_immobile.length > 0 ? "6." : "5.", "Valutazione Economica"],
+            ].filter(Boolean).map(([num, title], i) => (
+              <div key={i} style={{ display: "flex", alignItems: "baseline", padding: "14px 0", borderBottom: "1px solid #f0f1f4" }}>
+                <span style={{ fontSize: 18, fontWeight: 800, color: accent, fontFamily: "'Playfair Display', serif", width: 36 }}>{num}</span>
+                <span style={{ fontSize: 15, color: "#333", fontWeight: 500 }}>{title}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 40, padding: "20px 24px", background: "#fafbfd", borderRadius: 10, border: "1px solid #eef0f4" }}>
+            <div style={{ fontSize: 13, color: "#666", lineHeight: 1.7 }}>
+              <strong style={{ color: accent }}>{data.tipologia}</strong> — {data.indirizzo}{data.civico ? ` ${data.civico}` : ""}, {data.cap} {data.citta}
+              {data.zona && ` — ${data.zona}`}
+            </div>
+            <div style={{ fontSize: 12, color: "#999", marginTop: 8 }}>
+              Valutazione del {fmtDate(data.data_valutazione)}{data.agente_nome ? ` · Agente: ${data.agente_nome}` : ""}
+            </div>
+          </div>
+          <PN n={2} />
+        </div>
+
+        {/* ══════ PAG 3 — OGGETTO + MODUS OPERANDI ══════ */}
         <div className="rp page-break" style={{ ...pg, padding: "48px 48px 40px" }}>
           {/* Logo */}
           {data.agenzia_logo && <div style={{ textAlign: "center", marginBottom: 32 }}><img src={data.agenzia_logo} alt="Logo" style={{ height: 70, borderRadius: 10 }} /></div>}
@@ -256,14 +287,14 @@ export default function ReportValutazione({ initialData = null, onBack = null })
             <SH title="Metodologia e Criteri di Valutazione" accent={accent} />
             <div style={{ fontSize: 13.5, lineHeight: 1.8, color: "#444", whiteSpace: "pre-line", textAlign: "justify" }}>{data.agenzia_modus_operandi}</div>
           </>)}
-          <PN n={2} />
+          <PN n={3} />
         </div>
 
         {/* ══════ PAG 3 — MERCATO TRIESTE ══════ */}
         <div className="rp page-break" style={{ ...pg, padding: "48px 48px 40px" }}>
           <SH title="Il Mercato Immobiliare a Trieste" accent={accent} />
           <div style={{ fontSize: 13.5, lineHeight: 1.85, color: "#444", whiteSpace: "pre-line", textAlign: "justify" }}>{data.testo_mercato || "Testo mercato non generato."}</div>
-          <PN n={3} />
+          <PN n={4} />
         </div>
 
         {/* ══════ PAG 4 — ZONA + DATI OMI + MAPPA ══════ */}
@@ -321,7 +352,7 @@ export default function ReportValutazione({ initialData = null, onBack = null })
               <img src={data.mappa_img} alt="Posizione" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
             </div>
           )}
-          <PN n={4} />
+          <PN n={5} />
         </div>
 
         {/* ══════ PAG 5 — EDIFICIO + IMMOBILE + PERTINENZE ══════ */}
@@ -359,10 +390,32 @@ export default function ReportValutazione({ initialData = null, onBack = null })
             <SH title="Descrizione" accent={accent} />
             <div style={{ fontSize: 13.5, lineHeight: 1.8, color: "#444", whiteSpace: "pre-line", textAlign: "justify" }}>{data.descrizione_manuale}</div>
           </>)}
-          <PN n={5} />
+          <PN n={6} />
         </div>
 
-        {/* ══════ PAG 6 — VALUTAZIONE + DATI AGENZIA ══════ */}
+        {/* ══════ PAG FOTO (condizionale) ══════ */}
+        {data.foto_immobile && data.foto_immobile.length > 0 && (
+          <div className="rp page-break" style={{ ...pg, padding: "48px 48px 40px" }}>
+            <SH title="Documentazione Fotografica" accent={accent} />
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: data.foto_immobile.length === 1 ? "1fr" : "1fr 1fr",
+              gap: 14,
+            }}>
+              {data.foto_immobile.map((f, i) => (
+                <div key={f.id || i} style={{
+                  borderRadius: 8, overflow: "hidden", border: "1px solid #e0e2e8",
+                  height: data.foto_immobile.length <= 2 ? 320 : data.foto_immobile.length <= 4 ? 240 : 190,
+                }}>
+                  <img src={f.src} alt={`Foto ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </div>
+              ))}
+            </div>
+            <PN n={7} />
+          </div>
+        )}
+
+        {/* ══════ PAG VALUTAZIONE + DATI AGENZIA ══════ */}
         <div className="rp page-break" style={{ ...pg, padding: "48px 48px 40px" }}>
           <SH title="Valutazione Economica" accent={accent} />
           <p style={{ fontSize: 13, color: "#666", lineHeight: 1.7, maxWidth: 560, margin: "0 auto 24px", textAlign: "center" }}>
@@ -451,7 +504,7 @@ export default function ReportValutazione({ initialData = null, onBack = null })
           <div style={{ marginTop: 20, padding: "12px 16px", fontSize: 9, color: "#bbb", lineHeight: 1.6, borderTop: "1px solid #f0f0f0" }}>
             La presente relazione ha carattere indicativo e non costituisce perizia estimativa ai sensi di legge. I valori rappresentano una stima del più probabile prezzo di mercato sulla base delle informazioni disponibili. {data.agenzia_nome && `© ${new Date().getFullYear()} ${data.agenzia_nome}.`} Tutti i diritti riservati.
           </div>
-          <PN n={6} />
+          <PN n={8} />
         </div>
 
       </div>
