@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 const PERTINENZE_TYPES = [
   { id: "cantina", label: "Cantina", icon: "🏚️" },
@@ -58,13 +58,7 @@ const IMP_ACQUA_CALDA = ["", "Autonoma boiler elettrico", "Autonoma pompa di cal
 
 const IMP_GAS = ["", "Certificato", "Funzionante", "Assente"];
 
-const ZONE_TRIESTE = [
-  "", "Centro Storico", "Borgo Giuseppino", "Borgo Teresiano", "San Vito",
-  "Città Vecchia", "Cavana", "San Giacomo", "Roiano", "Gretta", "Barcola",
-  "Cologna", "Scorcola", "Chiadino", "Rozzol", "San Giovanni", "Ponziana",
-  "Barriera Vecchia", "Barriera Nuova", "Servola", "Muggia", "Opicina",
-  "Basovizza", "Prosecco", "Altro",
-];
+
 
 const initialFormData = {
   agenzia_nome: "", agenzia_indirizzo: "", agenzia_telefono: "", agenzia_email: "",
@@ -77,7 +71,8 @@ const initialFormData = {
   proprietario_nome: "", proprietario_cognome: "", proprietario_telefono: "", proprietario_email: "",
   lat: null, lng: null, mappa_img: null,
   superficie_commerciale: "", locali: "", camere: "", bagni: "",
-  livelli_immobile: "", altri_vani: "", altri_vani_mq: "",
+  livelli_immobile: "", altri_vani: [],
+  foto_immobile: [],
   balconi: "", balconi_mq: "", terrazzi: "", terrazzi_mq: "",
   giardino: "", giardino_mq: "", verande: "", verande_mq: "",
   stato_conservazione: "", anno_costruzione: "", classe_energetica: "",
@@ -155,10 +150,10 @@ const Select = ({ value, onChange, options, placeholder }) => (
 export default function ValutazioneImmobili() {
   const [form, setForm] = useState(initialFormData);
   const [currentStep, setCurrentStep] = useState(0);
-  const [savedAgency, setSavedAgency] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
   const [agentsList, setAgentsList] = useState([]);
-  const fileInputRef = useRef(null);
+  const [savedMercato, setSavedMercato] = useState(false);
+  const [zonesConfig, setZonesConfig] = useState([]);
   const accent = form.agenzia_colore || "#1a3a5c";
 
   useEffect(() => {
@@ -168,12 +163,30 @@ export default function ValutazioneImmobili() {
         if (res && res.value) {
           const data = JSON.parse(res.value);
           setForm((f) => ({ ...f, ...data }));
-          setSavedAgency(true);
           if (data.agenzia_logo) setLogoPreview(data.agenzia_logo);
         }
         // Load agents
         const agRes = await window.storage.get("agents_list");
         if (agRes && agRes.value) setAgentsList(JSON.parse(agRes.value));
+        // Load zones config (with default fallback)
+        const zRes = await window.storage.get("zones_config");
+        if (zRes && zRes.value) setZonesConfig(JSON.parse(zRes.value));
+        else setZonesConfig([
+          { id: 1, nome: "Centro di pregio" }, { id: 2, nome: "Centro non di pregio" },
+          { id: 3, nome: "San Giacomo, Chiarbola, Ponziana" }, { id: 4, nome: "Baiamonti, Valmaura, Borgo San Sergio, Altura" },
+          { id: 5, nome: "San Luigi, Rozzol, San Giovanni, Longera" }, { id: 6, nome: "Roiano, Gretta" },
+          { id: 7, nome: "Conconello, Barcola, Costiera, Grignano" }, { id: 8, nome: "Largo Barriera, Ospedale Maggiore, Settefontane" },
+          { id: 9, nome: "Scorcola, Cologna, Università" }, { id: 10, nome: "Campanelle, Costalunga, Sant'Anna" },
+          { id: 11, nome: "Opicina" }, { id: 12, nome: "Basovizza, Padriciano, Trebiciano, Prosecco" },
+          { id: 13, nome: "Prosecco, Aurisina, Santa Croce, Sistiana, Duino" },
+          { id: 14, nome: "Domio, San Dorligo della Valle, San Giuseppe, Log" }, { id: 15, nome: "Muggia" },
+        ]);
+        // Load saved mercato text
+        const mercRes = await window.storage.get("saved_testo_mercato");
+        if (mercRes && mercRes.value) {
+          setForm(f => ({ ...f, testo_mercato: f.testo_mercato || mercRes.value }));
+          setSavedMercato(true);
+        }
         // Check if editing existing valutazione
         const editRes = await window.storage.get("edit_valutazione");
         if (editRes && editRes.value) {
@@ -187,19 +200,6 @@ export default function ValutazioneImmobili() {
   }, []);
 
   const update = (key, val) => setForm((f) => ({ ...f, [key]: val }));
-
-  const saveAgency = async () => {
-    const d = { agenzia_nome: form.agenzia_nome, agenzia_indirizzo: form.agenzia_indirizzo, agenzia_telefono: form.agenzia_telefono, agenzia_email: form.agenzia_email, agenzia_colore: form.agenzia_colore, agenzia_logo: logoPreview, agenzia_modus_operandi: form.agenzia_modus_operandi };
-    try { await window.storage.set("agency_settings", JSON.stringify(d)); setSavedAgency(true); } catch (e) {}
-  };
-
-  const handleLogo = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { setLogoPreview(ev.target.result); update("agenzia_logo", ev.target.result); };
-    reader.readAsDataURL(file);
-  };
 
   const addPertinenza = (type) => {
     const p = PERTINENZE_TYPES.find((t) => t.id === type);
@@ -234,70 +234,19 @@ export default function ValutazioneImmobili() {
   };
 
   const generateTexts = () => {
-    // Market text
-    const mercato = `Il mercato immobiliare triestino presenta caratteristiche peculiari legate alla posizione geografica di confine, alla forte identità culturale della città e ad un tessuto urbano prevalentemente storico. Trieste è una città che negli ultimi anni ha registrato un crescente interesse da parte di acquirenti, anche internazionali, attratti dalla qualità della vita, dai costi ancora competitivi rispetto ad altre città italiane di dimensioni analoghe e dalla crescente offerta culturale e turistica.\n\nIl comparto residenziale mostra una domanda sostenuta nelle zone centrali e semicentrali, con particolare interesse per gli immobili ristrutturati o in buono stato di conservazione. Gli edifici d'epoca, numerosi nel centro storico e nei borghi teresiani e giuseppini, rappresentano un segmento di mercato particolarmente apprezzato quando dotati di elementi di pregio architettonico.\n\nI tempi medi di vendita si attestano tra i 3 e i 6 mesi per immobili correttamente posizionati nel prezzo, con variazioni significative in funzione della zona, dello stato dell'immobile e della qualità dell'offerta.`;
+    const mercato = form.testo_mercato || `Il mercato immobiliare triestino presenta caratteristiche peculiari legate alla posizione geografica di confine, alla forte identità culturale della città e ad un tessuto urbano prevalentemente storico. Trieste è una città che negli ultimi anni ha registrato un crescente interesse da parte di acquirenti, anche internazionali, attratti dalla qualità della vita, dai costi ancora competitivi rispetto ad altre città italiane di dimensioni analoghe e dalla crescente offerta culturale e turistica.\n\nIl comparto residenziale mostra una domanda sostenuta nelle zone centrali e semicentrali, con particolare interesse per gli immobili ristrutturati o in buono stato di conservazione.\n\nI tempi medi di vendita si attestano tra i 3 e i 6 mesi per immobili correttamente posizionati nel prezzo.`;
 
-    // Zone-specific text with OMI data and market context
-    const zoneTexts = {
-      "Centro Storico": "Il Centro Storico rappresenta il cuore pulsante della città, sviluppandosi attorno a Piazza Unità d'Italia — una delle piazze affacciate sul mare più grandi d'Europa — e lungo le vie eleganti che ne definiscono l'identità: Corso Italia, Via Mazzini, Via Dante, Via Carducci. La zona è caratterizzata da edifici d'epoca di notevole pregio architettonico, molti dei quali risalenti al periodo asburgico, con facciate neoclassiche e liberty che conferiscono al quartiere un carattere unico nel panorama italiano.\n\nLa dotazione di servizi è di primo livello: attività commerciali di pregio, ristoranti, teatri (tra cui il celebre Teatro Verdi), istituti bancari e uffici pubblici. La rete di trasporti pubblici garantisce collegamenti eccellenti con tutte le zone della città.\n\nSecondo i dati dell'Osservatorio del Mercato Immobiliare dell'Agenzia delle Entrate (OMI), il Centro Storico rientra nella zona B2, con quotazioni per abitazioni civili in stato normale comprese tra 1.650 e 2.650 €/mq. I dati di Immobiliare.it indicano un prezzo medio richiesto di circa 3.388 €/mq, con una crescita annua superiore al 14%. La zona Centro Storico/Città Vecchia/Rive registra le quotazioni più elevate della città, con punte fino a 3.662 €/mq per gli immobili di pregio.\n\nLa domanda è sostenuta sia da acquirenti locali che internazionali — in particolare austriaci, ungheresi, tedeschi e sloveni — attratti dal fascino mitteleuropeo della città e da quotazioni ancora competitive rispetto ad altre città storiche italiane. Gli immobili ristrutturati ai piani alti con affaccio sulle vie principali o con vista mare raggiungono le quotazioni più elevate, con tempi di assorbimento tra i 2 e i 4 mesi quando correttamente posizionati nel prezzo.",
-      "Borgo Teresiano": "Il Borgo Teresiano è il quartiere razionale progettato nel XVIII secolo per volere dell'imperatrice Maria Teresa d'Austria, uno dei primi esempi europei di pianificazione urbanistica moderna. Il suo elemento più iconico è il Canal Grande, l'antico porto-canale attorno al quale si sviluppano palazzi neoclassici di grande valore, tra cui la Chiesa di Sant'Antonio Taumaturgo e la Chiesa Serbo-Ortodossa di San Spiridione con le sue cupole azzurre.\n\nIl quartiere ospita importanti istituzioni culturali, il Teatro Lirico Giuseppe Verdi, numerose librerie storiche, caffè letterari e ristoranti di alto livello. La Stazione Centrale si trova al suo margine settentrionale, garantendo eccellenti collegamenti ferroviari.\n\nDal punto di vista immobiliare, il Borgo Teresiano rientra nella zona OMI B1 (Centro Urbano), con quotazioni OMI per abitazioni civili comprese tra 1.450 e 2.350 €/mq. I prezzi di mercato effettivi per gli immobili di pregio superano ampiamente questi valori, attestandosi nella fascia 2.800-3.800 €/mq per le soluzioni ristrutturate nei palazzi d'epoca lungo il Canal Grande.\n\nRappresenta una delle aree più ricercate della città, con una domanda costante sia da parte di acquirenti residenziali che di investitori. Gli immobili di ampia metratura con caratteristiche d'epoca conservate (soffitti affrescati, pavimenti originali, boiserie) raggiungono le valutazioni più elevate.",
-      "Borgo Giuseppino": "Il Borgo Giuseppino si sviluppa tra il colle di San Giusto e il centro città, prendendo il nome dall'imperatore Giuseppe II d'Asburgo. Il quartiere è caratterizzato da un tessuto urbano ordinato e ben pianificato, con palazzi ottocenteschi di buona qualità costruttiva, vie ampie e una piacevole alternanza tra residenze signorili e edifici civili.\n\nLa zona ospita la Cattedrale di San Giusto, il Castello e il Museo Civico, oltre a numerose attività commerciali e artigianali. La posizione collinare offre scorci panoramici sulla città e sul golfo.\n\nIl quartiere rientra nella zona OMI B1/B2, con quotazioni per abitazioni civili che si attestano tra 1.500 e 2.500 €/mq a seconda dello stato conservativo. I prezzi di mercato effettivi per gli immobili ristrutturati si collocano mediamente tra 2.400 e 3.200 €/mq.\n\nLa domanda è sostenuta e stabile, con particolare apprezzamento per gli immobili con vista sulla cattedrale, sul castello e sul golfo.",
-      "San Vito": "San Vito è un rione storico situato sull'omonimo colle a sud del centro città, con vedute panoramiche sulla città e sul golfo che ne rappresentano il principale punto di forza. Il quartiere è attraversato da caratteristiche vie in salita e scalinate che lo collegano alla zona del Porto Vecchio e al centro.\n\nIl tessuto urbano è misto, con edifici d'epoca di diverse qualità affiancati da costruzioni più recenti. La zona offre servizi di prossimità adeguati e una buona accessibilità pedonale al centro città.\n\nSan Vito rientra nelle zone OMI B2/C1, con quotazioni per abitazioni civili comprese tra 1.350 e 2.200 €/mq. I dati di Idealista indicano che il quartiere Centro-San Vito raggiunge quotazioni medie di circa 3.365 €/mq per gli immobili di pregio. Offre un buon rapporto qualità-prezzo rispetto alle zone più centrali, con premi significativi per gli immobili con vista panoramica sul golfo.",
-      "Città Vecchia": "La Città Vecchia è il nucleo storico più antico di Trieste, un dedalo di calli strette, piazzette nascoste ed edifici medievali e rinascimentali che si sviluppa ai piedi del colle di San Giusto, tra la cattedrale e il Teatro Romano di epoca augustea.\n\nNegli ultimi anni la zona è stata oggetto di significativi interventi di riqualificazione urbana, con l'apertura di nuove attività commerciali, gallerie d'arte, locali e spazi culturali.\n\nLa Città Vecchia rientra nella zona OMI B2, con quotazioni per abitazioni civili comprese tra 1.650 e 2.650 €/mq. I dati di mercato mostrano quotazioni medie di circa 3.335 €/mq per gli immobili in vendita. Il potenziale di rivalutazione è tra i più elevati della città.\n\nGli immobili ristrutturati con gusto, che conservano elementi architettonici originali come archi in pietra, volte e pavimenti antichi, sono particolarmente ricercati sia da acquirenti italiani che stranieri.",
-      "Cavana": "Cavana è il quartiere adiacente al Porto Vecchio e alla zona del Molo Audace, uno dei luoghi più suggestivi di Trieste. La zona è in forte rivalutazione grazie ai grandi progetti di riqualificazione del Porto Vecchio — un'area di oltre 60 ettari destinata a diventare un nuovo polo urbano.\n\nCavana rientra nella zona OMI B2, con quotazioni per abitazioni civili comprese tra 1.650 e 2.650 €/mq. I prezzi di mercato per gli immobili ristrutturati si attestano tra 2.500 e 3.300 €/mq, con tendenza al rialzo.\n\nIl quartiere presenta un buon potenziale di crescita nel medio termine, legato all'avanzamento dei progetti di riqualificazione del Porto Vecchio.",
-      "Barcola": "Barcola è la zona residenziale costiera più ambita di Trieste, celebre per la sua passeggiata lungomare — il \"salotto estivo\" dei triestini — e per il panorama sul Castello di Miramare e sull'intero golfo.\n\nLa zona offre una qualità della vita eccezionale: accesso diretto al mare con i caratteristici \"topolini\", piste ciclabili, il parco di Villa Revoltella e la vicinanza alla Riserva Naturale di Miramare.\n\nBarcola rientra nella zona OMI D3 (Parte Gretta - Barcola - Costiera), con quotazioni che raggiungono i valori massimi della città, fino a 3.200 €/mq secondo l'OMI. I dati di Immobiliare.it indicano che la zona Costiera raggiunge punte di circa 5.104 €/mq, con le soluzioni con vista mare diretta che spuntano i prezzi più elevati in assoluto a Trieste.\n\nLa domanda è costantemente superiore all'offerta, con tempi di vendita tra i più brevi del mercato.",
-      "San Giacomo": "San Giacomo è il quartiere più popoloso e vivace di Trieste, con il celebre mercato rionale all'aperto — tra i più estesi d'Europa. Il quartiere ha un'identità multiculturale forte e una vita di quartiere autentica.\n\nSan Giacomo rientra nella zona OMI C2 (San Giacomo - Chiarbola - Servola), con quotazioni tra le più accessibili della città: da 1.210 €/mq (valore minimo OMI cittadino) fino a circa 1.800 €/mq. La zona registra oltre 260 annunci immobiliari attivi, il numero più alto della città.\n\nParticolarmente interessante per giovani coppie, famiglie e investitori alla ricerca di buoni rendimenti locativi, con canoni medi di circa 12,46 €/mq mensili secondo Immobiliare.it.",
-      "Roiano": "Roiano è un quartiere residenziale collinare situato a nord-ovest del centro, in posizione privilegiata tra il centro e Barcola. Apprezzato per la qualità della vita, la presenza di aree verdi e la vicinanza alla passeggiata di Barcola.\n\nRoiano rientra nella zona OMI C4/D3, con quotazioni per abitazioni civili comprese tra 1.400 e 2.400 €/mq. I prezzi per gli immobili ristrutturati con vista panoramica possono superare i 2.800 €/mq.\n\nParticolarmente ricercati gli immobili con vista mare e le villette con giardino.",
-      "Gretta": "Gretta è un quartiere residenziale lungo la strada costiera che collega il centro a Barcola, con una posizione favorevole tra i servizi del centro e l'accesso al mare.\n\nGretta rientra nella zona OMI D3 (Parte Gretta - Barcola - Costiera), con quotazioni per abitazioni civili che partono da circa 1.300 €/mq. I prezzi di mercato si attestano tra 1.800 e 2.800 €/mq.\n\nI valori più elevati si registrano nella parte alta del quartiere con vista sul golfo e nelle vicinanze della passeggiata di Barcola.",
-      "Scorcola": "Scorcola è una zona residenziale collinare sopra il centro città, con viste panoramiche eccezionali sulla città e sul golfo. Caratterizzata da edifici residenziali e ville, offre un contesto tranquillo e riservato.\n\nScorcola rientra nella zona OMI C5, con quotazioni tra le più alte delle zone collinari. I dati OMI indicano valori per box e posti auto fino a 2.600 €/mq, a testimonianza del pregio della zona. I prezzi per gli appartamenti si attestano tra 2.200 e 3.200 €/mq.\n\nParticolarmente ricercate le ville e gli appartamenti con ampia terrazza panoramica.",
-      "Chiadino": "Chiadino è un quartiere residenziale collinare a nord del centro, con palazzine degli anni '50-'70 e alcune ville. Offre tranquillità e verde con buoni collegamenti verso il centro.\n\nChiadino rientra nella zona OMI C3/C4, con quotazioni per abitazioni civili comprese tra 1.300 e 2.100 €/mq. I prezzi di mercato si attestano tra 1.800 e 2.500 €/mq.\n\nBuon rapporto qualità-prezzo per chi cerca spazi abitativi più ampi rispetto al centro.",
-      "Barriera Nuova": "La Barriera Nuova è una zona semicentrale tra il Borgo Teresiano e i quartieri orientali. Il nome deriva dalle antiche barriere doganali. Tessuto urbano residenziale con buona dotazione di servizi commerciali.\n\nRientra nella zona OMI B1/C1, con quotazioni per abitazioni civili comprese tra 1.350 e 2.200 €/mq. I prezzi di mercato si attestano tra 1.900 e 2.800 €/mq.\n\nBuon compromesso tra centralità e quotazioni più contenute rispetto al cuore del centro storico.",
-      "Barriera Vecchia": "La Barriera Vecchia è il quartiere più multiculturale di Trieste, situato a est del centro. Vivace e dinamico, con negozi etnici, ristoranti internazionali e un processo di rinnovamento in corso.\n\nRientra nella zona OMI C1, con quotazioni per abitazioni civili comprese tra 1.250 e 2.000 €/mq. I prezzi di mercato si attestano tra 1.600 e 2.400 €/mq.\n\nQuotazioni tra le più accessibili delle zone semicentrali, con buone opportunità per prima casa e investimenti locativi.",
-      "Ponziana": "Ponziana è un quartiere residenziale nella fascia orientale, tra San Giacomo e Rozzol. Tessuto urbano misto con servizi di base adeguati.\n\nRientra nella zona OMI C1/C2, con quotazioni per abitazioni civili comprese tra 1.200 e 1.900 €/mq. I canoni di locazione nella macro-zona raggiungono i 12,46 €/mq mensili secondo Immobiliare.it.\n\nBuon rapporto tra superficie abitativa e prezzo, interessante per famiglie e investitori.",
-      "Rozzol": "Rozzol è un quartiere residenziale collinare nella parte orientale, con edifici degli anni '60-'80. Posizione elevata con scorci panoramici.\n\nRientra nella zona OMI C3/D1, con quotazioni per abitazioni civili comprese tra 1.100 e 1.700 €/mq. I dati di WikiCasa confermano quotazioni nella fascia bassa del mercato.\n\nAccessibile per chi cerca la prima casa con possibilità di parcheggio più agevoli rispetto al centro.",
-      "San Giovanni": "San Giovanni è un quartiere residenziale orientale, noto per il Parco di San Giovanni (ex Ospedale Psichiatrico, oggi area verde culturale) e la vicinanza all'Università degli Studi di Trieste.\n\nRientra nella zona OMI C2/D1, con quotazioni per abitazioni civili comprese tra 1.100 e 1.800 €/mq. La presenza dell'università genera una domanda stabile di affitti.\n\nIl Parco di San Giovanni rappresenta un elemento di qualità per la vita residenziale nel quartiere.",
-      "Cologna": "Cologna è un quartiere residenziale nella parte sud-orientale, con carattere prevalentemente popolare e buoni collegamenti con il centro.\n\nRientra nella zona OMI C2/D1, con quotazioni per abitazioni civili comprese tra 1.100 e 1.700 €/mq.\n\nInteressante per chi cerca la prima casa o soluzioni economiche. Figura tra le zone con il maggior numero di annunci immobiliari.",
-      "Servola": "Servola è un quartiere periferico nella parte meridionale, storicamente legato alle attività industriali e portuali. In fase di trasformazione.\n\nRientra nella zona OMI C2, con le quotazioni più accessibili della città: da 1.210 €/mq (valore minimo OMI cittadino). I dati di mercato confermano quotazioni medie di circa 1.805 €/mq.\n\nOpportunità per investitori e per chi cerca soluzioni economiche con potenziale di rivalutazione.",
-      "Muggia": "Muggia è un incantevole borgo marinaro a circa 10 km a sud di Trieste, l'ultimo comune italiano prima del confine sloveno. Il centro storico di impianto veneziano — con calli, campielli e il mandracchio — è affacciato sulla baia omonima.\n\nLa cittadina offre un porto turistico, spiagge, il celebre Carnevale Muggesano e una tradizione gastronomica legata al mare. Muggia rientra nella zona OMI E1, con quotazioni che superano i 2.000 €/mq nelle posizioni migliori secondo i dati OMI regionali.\n\nIl mercato attrae sia residenti che cercano una vita più tranquilla sia acquirenti alla ricerca di seconde case in un contesto marinaro. La domanda internazionale è in crescita, soprattutto da parte di acquirenti sloveni e austriaci.",
-      "Opicina": "Opicina (in sloveno Opčine) è la località carsica che domina Trieste dall'alto, a circa 300 metri sul livello del mare. Raggiungibile con il suggestivo Tram de Opcina — una delle ultime tramvie a cremagliera d'Europa — e dalla Strada Napoleonica, percorso panoramico amatissimo.\n\nL'area è ricca di sentieri naturalistici, grotte e le tipiche osmize carsiche. Opicina rientra nella zona OMI D2/R1, con quotazioni per abitazioni civili comprese tra 1.200 e 2.000 €/mq, con valori più elevati per ville e immobili con giardino e vista panoramica.\n\nMercato orientato alle soluzioni indipendenti, ideale per famiglie e chi cerca verde e spazio (15-20 minuti dal centro).",
-      "Basovizza": "Basovizza è una frazione carsica sull'altopiano a est di Trieste, nota per il Monumento Nazionale della Foiba e per i centri di ricerca scientifica (Sincrotrone Elettra, ICTP).\n\nRientra nella zona OMI R1, con quotazioni accessibili per soluzioni indipendenti con giardino.\n\nIdeale per chi cerca tranquillità, spazi aperti e il contatto con la natura del Carso.",
-      "Prosecco": "Prosecco (in sloveno Prosek) è una frazione carsica a nord-ovest di Trieste, nota per la tradizione vinicola — il toponimo precede e non è correlato al celebre vino veneto — e per le tipiche osmize.\n\nRientra nella zona OMI R1/E3, con quotazioni contenute. Mercato di nicchia orientato alle case tradizionali carsiche.\n\nZona ideale per chi ama la natura, la tranquillità e le tradizioni del Carso triestino.",
-    };
-    const zonaBase = form.zona && zoneTexts[form.zona] ? zoneTexts[form.zona] : "La zona in cui è ubicato l'immobile presenta caratteristiche residenziali con una dotazione di servizi adeguata alle esigenze abitative.";
-    const zona = `L'immobile oggetto di valutazione è ubicato nella zona ${form.zona || "—"} di Trieste. ${zonaBase}`;
-
-    const serviziDefaults = {
-      "Centro Storico": "Scuole di ogni ordine e grado, ospedale Maggiore, Teatro Verdi, tutti i servizi commerciali di primo livello, 8+ linee bus, parcheggi a pagamento",
-      "Borgo Teresiano": "Stazione Ferroviaria Centrale, Canal Grande, scuole, supermercati, librerie storiche, caffè letterari, ottimi collegamenti bus",
-      "Borgo Giuseppino": "Cattedrale di San Giusto, Castello, Museo Civico, scuole, negozi artigianali, ristoranti",
-      "San Vito": "Porto Vecchio in riqualificazione, scuole primarie, negozi di vicinato, collegamento bus verso centro",
-      "Città Vecchia": "Teatro Romano, gallerie d'arte, ristoranti, locali serali, tutti i servizi del centro storico",
-      "Cavana": "Molo Audace, Porto Vecchio in riqualificazione, locali, ristoranti, vita culturale",
-      "Barcola": "Passeggiata lungomare, Castello di Miramare, Riserva Naturale Marina, piste ciclabili, scuole, parco Villa Revoltella",
-      "San Giacomo": "Mercato rionale all'aperto, scuole di ogni ordine, supermercati, ambulatori, farmacia, 5+ linee bus",
-      "Roiano": "Parco Villa Giulia, scuole, negozi di vicinato, bus verso centro e Barcola, aree verdi",
-      "Gretta": "Strada costiera, scuole, supermercati, collegamento diretto con Barcola e passeggiata",
-      "Scorcola": "Vista panoramica, scuole, aree verdi, parcheggi, bus verso centro",
-      "Chiadino": "Scuole, negozi di vicinato, aree verdi, bus, accesso rapido al Carso",
-      "Barriera Nuova": "Zona semicentrale, scuole, supermercati, uffici postali, banche, 4+ linee bus",
-      "Barriera Vecchia": "Vicinanza Stazione FS, mercato multietnico, negozi, scuole, bus",
-      "Ponziana": "Scuole, ambulatori, supermercati, farmacia, bus verso centro",
-      "Rozzol": "Scuole, aree verdi, parcheggi disponibili, bus, posizione collinare panoramica",
-      "San Giovanni": "Parco di San Giovanni, Università degli Studi, strutture ospedaliere, scuole, bus",
-      "Cologna": "Scuole, supermercati, ambulatorio, farmacia, bus verso centro",
-      "Servola": "Scuole, negozi di vicinato, bus, area portuale in riqualificazione",
-      "Muggia": "Centro storico veneziano, porto turistico, spiagge, scuole, tutti i servizi, Carnevale Muggesano",
-      "Opicina": "Tram de Opcina, osmize carsiche, Strada Napoleonica, scuole, immersa nel verde del Carso",
-      "Basovizza": "Sincrotrone Elettra, centro ICTP, sentieri del Carso, scuole primarie, Monumento Nazionale Foiba",
-      "Prosecco": "Osmize tradizionali, sentieri escursionistici, vicinanza Val Rosandra, bus, scuola primaria",
-    };
-    const servizi = form.zona && serviziDefaults[form.zona] ? serviziDefaults[form.zona] : "Servizi di base presenti nella zona.";
+    // Check zones config first for zone description
+    const zonaConfig = zonesConfig.find(z => z.nome === form.zona);
+    const zonaDesc = zonaConfig && zonaConfig.descrizione ? zonaConfig.descrizione : "";
+    const zona = zonaDesc || `L'immobile è ubicato nella zona ${form.zona || "—"} di Trieste.`;
+    const servizi = "";
 
     return { mercato, zona, servizi };
   };
 
   const steps = [
-    { label: "Agenzia", icon: "🏢" },
+    { label: "Copertina", icon: "🎨" },
     { label: "Immobile", icon: "📍" },
     { label: "Caratteristiche", icon: "📐" },
     { label: "Pertinenze", icon: "🅿️" },
@@ -306,7 +255,6 @@ export default function ValutazioneImmobili() {
   ];
 
   const canProceed = () => {
-    if (currentStep === 0) return form.agenzia_nome;
     if (currentStep === 1) return form.indirizzo && form.tipologia;
     if (currentStep === 2) return form.superficie_commerciale;
     if (currentStep === 4) return form.valore_min || form.valore_medio || form.valore_max;
@@ -325,16 +273,16 @@ export default function ValutazioneImmobili() {
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
       {/* HEADER */}
-      <div style={{ background: `linear-gradient(135deg, ${accent}, ${accent}dd)`, padding: "24px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ background: `linear-gradient(135deg, ${accent}, ${accent}dd)`, padding: "20px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           {logoPreview ? (
-            <img src={logoPreview} alt="Logo" style={{ height: 44, width: 44, objectFit: "contain", borderRadius: 8, background: "#fff", padding: 4 }} />
+            <img src={logoPreview} alt="Logo" style={{ height: 40, width: 40, objectFit: "contain", borderRadius: 8, background: "#fff", padding: 3 }} />
           ) : (
-            <div style={{ width: 44, height: 44, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🏠</div>
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📝</div>
           )}
           <div>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "var(--font-heading)", letterSpacing: "-0.5px" }}>{form.agenzia_nome || "Valutazione Immobiliare"}</h1>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>Trieste — Strumento di Valutazione Professionale</div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "var(--font-heading)", letterSpacing: "-0.5px" }}>Nuova Valutazione</h1>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{form.agenzia_nome || "Valutazione Immobiliare"} — Trieste</div>
           </div>
         </div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)" }}>{new Date().toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}</div>
@@ -358,103 +306,56 @@ export default function ValutazioneImmobili() {
       {/* FORM BODY */}
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "10px 20px 100px" }}>
 
-        {/* ── STEP 0: AGENZIA ── */}
+        {/* ── STEP 0: COPERTINA + AGENTE ── */}
         {currentStep === 0 && (
           <div style={{ background: "var(--card-bg)", borderRadius: 14, padding: "28px 28px 24px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", marginTop: 20 }}>
-            <SectionTitle step="1">Dati Agenzia</SectionTitle>
+            <SectionTitle step="1">Copertina e Agente</SectionTitle>
+
             <Row>
-              <Field label="Nome Agenzia *" half><input style={inputStyle} value={form.agenzia_nome} onChange={(e) => update("agenzia_nome", e.target.value)} placeholder="Es. Immobiliare Trieste" /></Field>
-              <Field label="Colore Brand" half>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <input type="color" value={form.agenzia_colore} onChange={(e) => update("agenzia_colore", e.target.value)} style={{ width: 44, height: 38, border: "none", borderRadius: 6, cursor: "pointer", padding: 0 }} />
-                  <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{form.agenzia_colore}</span>
-                </div>
+              <Field label="Titolo Valutazione (appare in copertina)" half>
+                <input style={inputStyle} value={form.titolo_valutazione} onChange={(e) => update("titolo_valutazione", e.target.value)} placeholder="Valutazione Immobiliare" />
               </Field>
-            </Row>
-            <Row>
-              <Field label="Indirizzo Agenzia" half><input style={inputStyle} value={form.agenzia_indirizzo} onChange={(e) => update("agenzia_indirizzo", e.target.value)} placeholder="Via Roma 1, Trieste" /></Field>
-              <Field label="Telefono" half><input style={inputStyle} value={form.agenzia_telefono} onChange={(e) => update("agenzia_telefono", e.target.value)} placeholder="+39 040 123456" /></Field>
-            </Row>
-            <Row>
-              <Field label="Email" half><input style={inputStyle} value={form.agenzia_email} onChange={(e) => update("agenzia_email", e.target.value)} placeholder="info@agenzia.it" /></Field>
-              <Field label="Logo Agenzia" half>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogo} style={{ display: "none" }} />
-                  <button onClick={() => fileInputRef.current?.click()} style={{ padding: "10px 18px", border: "1.5px dashed var(--border)", borderRadius: 8, background: "var(--input-bg)", cursor: "pointer", fontSize: 13, fontFamily: "var(--font-body)", color: "var(--text-secondary)" }}>📎 Carica logo</button>
-                  {logoPreview && <img src={logoPreview} alt="logo" style={{ height: 36, borderRadius: 6 }} />}
-                </div>
-              </Field>
-            </Row>
-            <div style={{ marginTop: 16 }}>
-              <Field label="Agente" full>
+              <Field label="Agente" half>
                 {agentsList.length > 0 ? (
                   <select style={selectStyle} value={form.agente_nome} onChange={(e) => {
                     const sel = agentsList.find(a => `${a.cognome} ${a.nome}` === e.target.value);
-                    if (sel) {
-                      setForm(f => ({ ...f, agente_nome: `${sel.cognome} ${sel.nome}`, agente_telefono: sel.telefono || "", agente_email: sel.email || "" }));
-                    } else {
-                      update("agente_nome", e.target.value);
-                    }
+                    if (sel) setForm(f => ({ ...f, agente_nome: `${sel.cognome} ${sel.nome}`, agente_telefono: sel.telefono || "", agente_email: sel.email || "" }));
+                    else update("agente_nome", e.target.value);
                   }}>
                     <option value="">— Seleziona agente —</option>
                     {agentsList.map(a => <option key={a.id} value={`${a.cognome} ${a.nome}`}>{a.cognome} {a.nome}</option>)}
                   </select>
                 ) : (
-                  <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "10px 0" }}>
-                    Nessun agente registrato. Vai alla Dashboard → tab Agenti per aggiungerne.
-                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "10px 0" }}>Nessun agente. Vai alla Dashboard → Agenti.</div>
                 )}
               </Field>
-            </div>
+            </Row>
             {form.agente_nome && (
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, display: "flex", gap: 16 }}>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4, marginBottom: 12, display: "flex", gap: 16 }}>
                 {form.agente_telefono && <span>📞 {form.agente_telefono}</span>}
                 {form.agente_email && <span>📧 {form.agente_email}</span>}
               </div>
             )}
-            <div style={{ marginTop: 16 }}>
-              <Field label="Titolo Valutazione (appare in copertina)" full>
-                <input style={inputStyle} value={form.titolo_valutazione} onChange={(e) => update("titolo_valutazione", e.target.value)} placeholder="Valutazione Immobiliare" />
-              </Field>
-            </div>
-            <div style={{ marginTop: 16 }}>
+
+            <div style={{ marginTop: 12 }}>
               <Field label="Immagine di Copertina Report" full>
                 <input id="copertinaUpload" type="file" accept="image/jpeg,image/jpg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => {
-                  const file = e.target.files[0];
-                  if (!file) return;
+                  const file = e.target.files[0]; if (!file) return;
                   const reader = new FileReader();
                   reader.onload = (ev) => update("copertina_img", ev.target.result);
                   reader.readAsDataURL(file);
                 }} />
-                <button
-                  onClick={() => document.getElementById("copertinaUpload")?.click()}
-                  style={{
-                    padding: "14px 24px", borderRadius: 10, width: "100%",
-                    border: form.copertina_img ? `2px solid ${accent}40` : "2px dashed var(--border)",
-                    background: form.copertina_img ? `${accent}08` : "var(--input-bg)",
-                    cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "var(--font-body)",
-                    color: form.copertina_img ? accent : "var(--text-secondary)",
-                    display: "flex", alignItems: "center", gap: 8, justifyContent: "center",
-                  }}
-                >
+                <button onClick={() => document.getElementById("copertinaUpload")?.click()} style={{ padding: "14px 24px", borderRadius: 10, width: "100%", border: form.copertina_img ? `2px solid ${accent}40` : "2px dashed var(--border)", background: form.copertina_img ? `${accent}08` : "var(--input-bg)", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "var(--font-body)", color: form.copertina_img ? accent : "var(--text-secondary)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
                   {form.copertina_img ? "✓ Immagine caricata — Clicca per sostituire" : "🖼️ Carica immagine di copertina"}
                 </button>
                 {form.copertina_img && (
                   <div style={{ marginTop: 10, position: "relative" }}>
-                    <img src={form.copertina_img} alt="Copertina" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 10, border: "1.5px solid var(--border)", display: "block" }} />
+                    <img src={form.copertina_img} alt="Copertina" style={{ width: "100%", maxHeight: 250, objectFit: "cover", borderRadius: 10, border: "1.5px solid var(--border)", display: "block" }} />
                     <button onClick={() => update("copertina_img", null)} style={{ position: "absolute", top: 8, right: 8, background: "#fee", border: "1px solid #fcc", borderRadius: 6, color: "#c33", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontFamily: "var(--font-body)" }}>✕ Rimuovi</button>
                   </div>
                 )}
               </Field>
             </div>
-            <div style={{ marginTop: 16 }}>
-              <Field label="Modus Operandi / Criteri di Valutazione" full>
-                <textarea style={{ ...inputStyle, minHeight: 110, resize: "vertical" }} value={form.agenzia_modus_operandi} onChange={(e) => update("agenzia_modus_operandi", e.target.value)} placeholder="Descrivi la metodologia e i criteri utilizzati per le valutazioni immobiliari. Es: La valutazione viene effettuata attraverso il metodo comparativo di mercato, analizzando le compravendite recenti di immobili simili nella medesima zona..." />
-              </Field>
-            </div>
-            <button onClick={saveAgency} style={{ marginTop: 18, padding: "10px 22px", borderRadius: 8, border: "none", background: savedAgency ? "#e8f5e9" : accent, color: savedAgency ? "#2e7d32" : "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-body)" }}>
-              {savedAgency ? "✓ Dati agenzia salvati" : "Salva dati agenzia"}
-            </button>
           </div>
         )}
 
@@ -468,7 +369,12 @@ export default function ValutazioneImmobili() {
                   {TIPOLOGIE.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="Zona" half><Select value={form.zona} onChange={(e) => update("zona", e.target.value)} options={ZONE_TRIESTE} placeholder="— Seleziona zona —" /></Field>
+              <Field label="Zona" half>
+                <select style={selectStyle} value={form.zona} onChange={(e) => update("zona", e.target.value)}>
+                  <option value="">— Seleziona zona —</option>
+                  {zonesConfig.map(z => <option key={z.id} value={z.nome}>{z.nome}</option>)}
+                </select>
+              </Field>
             </Row>
             <Row>
               <Field label="Indirizzo *" half><input style={inputStyle} value={form.indirizzo} onChange={(e) => update("indirizzo", e.target.value)} placeholder="Via Carducci" /></Field>
@@ -539,10 +445,36 @@ export default function ValutazioneImmobili() {
                 </div>
               )}
             </div>
+
+            {/* Foto immobile */}
+            <SubLabel>Foto Immobile</SubLabel>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 10px" }}>Carica fino a 6 foto dell'immobile. Appariranno nel report.</p>
+            <input id="fotoUpload" type="file" accept="image/jpeg,image/jpg,image/png,image/webp" multiple style={{ display: "none" }} onChange={(e) => {
+              const files = Array.from(e.target.files);
+              const remaining = 6 - form.foto_immobile.length;
+              files.slice(0, remaining).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (ev) => setForm(f => ({ ...f, foto_immobile: [...f.foto_immobile, { id: Date.now() + Math.random(), src: ev.target.result }] }));
+                reader.readAsDataURL(file);
+              });
+              e.target.value = "";
+            }} />
+            <button onClick={() => document.getElementById("fotoUpload")?.click()} disabled={form.foto_immobile.length >= 6}
+              style={{ padding: "12px 20px", borderRadius: 10, border: "2px dashed var(--border)", background: "var(--input-bg)", cursor: form.foto_immobile.length >= 6 ? "default" : "pointer", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-body)", color: "var(--text-secondary)", width: "100%", textAlign: "center", opacity: form.foto_immobile.length >= 6 ? 0.5 : 1 }}
+            >📷 Aggiungi foto ({form.foto_immobile.length}/6)</button>
+            {form.foto_immobile.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 12 }}>
+                {form.foto_immobile.map(f => (
+                  <div key={f.id} style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1.5px solid var(--border)" }}>
+                    <img src={f.src} alt="" style={{ width: "100%", height: 120, objectFit: "cover", display: "block" }} />
+                    <button onClick={() => setForm(fm => ({ ...fm, foto_immobile: fm.foto_immobile.filter(x => x.id !== f.id) }))}
+                      style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.6)", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", padding: "2px 6px", fontSize: 11 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
-
-        {/* ── STEP 2: CARATTERISTICHE ── */}
         {currentStep === 2 && (
           <div style={{ background: "var(--card-bg)", borderRadius: 14, padding: "28px 28px 24px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", marginTop: 20 }}>
 
@@ -613,15 +545,28 @@ export default function ValutazioneImmobili() {
               <Field label="Livelli Immobile" third>
                 <Select value={form.livelli_immobile} onChange={(e) => update("livelli_immobile", e.target.value)} options={LIVELLI_IMMOBILE} />
               </Field>
-              <Field label="Altri Vani Collegati" third>
-                <Select value={form.altri_vani} onChange={(e) => { update("altri_vani", e.target.value); if (!e.target.value) update("altri_vani_mq", ""); }} options={ALTRI_VANI} />
-              </Field>
-              {form.altri_vani && (
-                <Field label={`Mq ${form.altri_vani}`} third>
-                  <input type="number" style={inputStyle} value={form.altri_vani_mq} onChange={(e) => update("altri_vani_mq", e.target.value)} placeholder="55" />
-                </Field>
-              )}
             </Row>
+
+            <SubLabel>Altri Vani Collegati</SubLabel>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+              {ALTRI_VANI.filter(v => v !== "").map(tipo => (
+                <button key={tipo} onClick={() => setForm(f => ({ ...f, altri_vani: [...f.altri_vani, { id: Date.now(), tipo, mq: "" }] }))}
+                  style={{ padding: "6px 14px", borderRadius: 8, border: "1.5px solid var(--border)", background: "var(--input-bg)", cursor: "pointer", fontSize: 12, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 5, transition: "all 0.2s" }}
+                  onMouseOver={(e) => { e.currentTarget.style.borderColor = accent; e.currentTarget.style.background = accent + "10"; }}
+                  onMouseOut={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--input-bg)"; }}
+                >+ {tipo}</button>
+              ))}
+            </div>
+            {form.altri_vani.length === 0 && (
+              <div style={{ padding: 16, textAlign: "center", color: "var(--text-secondary)", fontSize: 13, background: "var(--input-bg)", borderRadius: 8, border: "1.5px dashed var(--border)", marginBottom: 12 }}>Nessun vano aggiuntivo. Clicca sopra per aggiungerne.</div>
+            )}
+            {form.altri_vani.map(v => (
+              <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, padding: "10px 14px", background: "var(--input-bg)", borderRadius: 8, border: "1px solid var(--border)" }}>
+                <span style={{ fontWeight: 600, fontSize: 13, minWidth: 100 }}>{v.tipo}</span>
+                <Field label="" third><input type="number" style={inputStyle} value={v.mq} onChange={(e) => setForm(f => ({ ...f, altri_vani: f.altri_vani.map(x => x.id === v.id ? { ...x, mq: e.target.value } : x) }))} placeholder="Mq" /></Field>
+                <button onClick={() => setForm(f => ({ ...f, altri_vani: f.altri_vani.filter(x => x.id !== v.id) }))} style={{ background: "#fee", border: "1px solid #fcc", borderRadius: 6, color: "#c33", cursor: "pointer", padding: "4px 8px", fontSize: 11, fontFamily: "var(--font-body)" }}>✕</button>
+              </div>
+            ))}
 
             <SubLabel>Spazi Esterni</SubLabel>
             <Row>
@@ -794,12 +739,6 @@ export default function ValutazioneImmobili() {
             </Field>
 
             <div style={{ marginTop: 16 }}>
-              <Field label="Descrizione Immobile (manuale)" full>
-                <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={form.descrizione_manuale} onChange={(e) => update("descrizione_manuale", e.target.value)} placeholder="Luminoso appartamento al terzo piano con vista sul golfo di Trieste..." />
-              </Field>
-            </div>
-
-            <div style={{ marginTop: 16 }}>
               <Field label="Data Valutazione" half>
                 <input type="date" style={inputStyle} value={form.data_valutazione} onChange={(e) => update("data_valutazione", e.target.value)} />
               </Field>
@@ -816,8 +755,8 @@ export default function ValutazioneImmobili() {
             setTimeout(() => setForm(f => ({
               ...f,
               testo_mercato: f.testo_mercato || t.mercato,
-              testo_zona: t.zona,
-              servizi_zona: t.servizi,
+              testo_zona: (f.zona !== f.testo_zona_generata_per) ? t.zona : (f.testo_zona || t.zona),
+              servizi_zona: (f.zona !== f.testo_zona_generata_per) ? t.servizi : (f.servizi_zona || t.servizi),
               testo_zona_generata_per: f.zona,
             })), 0);
           }
@@ -832,15 +771,17 @@ export default function ValutazioneImmobili() {
               <div style={{ marginBottom: 24 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: accent, textTransform: "uppercase", letterSpacing: "0.5px" }}>Il Mercato Immobiliare a Trieste</label>
-                  <button onClick={() => { const t = generateTexts(); update("testo_mercato", t.mercato); }}
-                    style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${accent}40`, background: `${accent}08`, color: accent, cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "var(--font-body)" }}>
-                    🔄 Rigenera
+                  <button onClick={async () => {
+                    try { await window.storage.set("saved_testo_mercato", form.testo_mercato); setSavedMercato(true); } catch (e) {}
+                  }}
+                    style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: savedMercato ? "#e8f5e9" : accent, color: savedMercato ? "#2e7d32" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "var(--font-body)" }}>
+                    {savedMercato ? "✓ Salvato" : "💾 Salva per tutte le valutazioni"}
                   </button>
                 </div>
                 <textarea
                   style={{ ...inputStyle, minHeight: 180, resize: "vertical", lineHeight: 1.7, fontSize: 13 }}
                   value={form.testo_mercato}
-                  onChange={(e) => update("testo_mercato", e.target.value)}
+                  onChange={(e) => { update("testo_mercato", e.target.value); setSavedMercato(false); }}
                   placeholder="Descrizione del mercato immobiliare..."
                 />
               </div>
@@ -887,17 +828,6 @@ export default function ValutazioneImmobili() {
                   value={form.descrizione_manuale}
                   onChange={(e) => update("descrizione_manuale", e.target.value)}
                   placeholder="Descrizione dell'immobile..."
-                />
-              </div>
-
-              {/* Note valutazione */}
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: accent, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Note sulla Valutazione</label>
-                <textarea
-                  style={{ ...inputStyle, minHeight: 80, resize: "vertical", lineHeight: 1.7, fontSize: 13 }}
-                  value={form.note_valutazione}
-                  onChange={(e) => update("note_valutazione", e.target.value)}
-                  placeholder="Note sulla valutazione..."
                 />
               </div>
 
