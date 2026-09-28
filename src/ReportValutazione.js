@@ -34,7 +34,7 @@ const DEMO = {
   facilita_accesso: "Molto comodo", area_verde_condominiale: false, parcheggi_condominiali: false,
   imp_elettrico: "Certificato", imp_acqua_calda: "Autonoma caldaia", cappotto: false,
   ascensore: true, aria_condizionata: false, pannelli_fotovoltaici: false, senza_barriere: false,
-  valore_min: "280000", valore_medio: "310000", valore_max: "340000",
+  valore_min: "280000", valore_medio: "310000", valore_max: "340000", prezzo_pubblicita: "329000",
   note_valutazione: "Valutazione basata su comparabili di zona.",
   descrizione_manuale: "Splendido appartamento di 95 mq commerciali al terzo piano di un elegante palazzo d'epoca nel Centro Storico di Trieste. Completamente ristrutturato, si compone di ingresso, ampio soggiorno, cucina abitabile, due camere e bagno finestrato. Due balconi per 12 mq totali.",
   testo_mercato: "Il mercato immobiliare triestino presenta caratteristiche peculiari legate alla posizione geografica di confine e ad un tessuto urbano prevalentemente storico. Trieste ha registrato un crescente interesse da parte di acquirenti internazionali, attratti dalla qualità della vita e da quotazioni competitive.\n\nIl comparto residenziale mostra domanda sostenuta nelle zone centrali, con particolare interesse per immobili ristrutturati. I tempi medi di vendita si attestano tra 3 e 6 mesi.",
@@ -445,6 +445,18 @@ export default function ReportValutazione({ initialData = null, onBack = null })
               </div>
             )}
           </div>
+
+          {/* Prezzo consigliato di pubblicità */}
+          {data.prezzo_pubblicita && (
+            <div style={{ background: "linear-gradient(135deg, #f0faf4, #e8f5ed)", borderRadius: 12, padding: "20px 26px", textAlign: "center", border: "2px solid #b8e6cc", marginBottom: 24 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1.5px", color: "#6b9f7e", marginBottom: 8 }}>Prezzo Consigliato di Pubblicità</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#2e7d32", fontFamily: "'Playfair Display', serif", lineHeight: 1.1 }}>{fmt(data.prezzo_pubblicita)}</div>
+              {data.superficie_commerciale && <div style={{ fontSize: 12, color: "#6b9f7e", marginTop: 8, fontWeight: 600 }}>{Math.round(Number(data.prezzo_pubblicita) / Number(data.superficie_commerciale)).toLocaleString("it-IT")} €/mq</div>}
+              <div style={{ fontSize: 10, color: "#999", marginTop: 10, lineHeight: 1.5, maxWidth: 450, margin: "10px auto 0" }}>
+                Il prezzo di pubblicità tiene conto della strategia commerciale e del margine di trattativa
+              </div>
+            </div>
+          )}
 
           {/* Pertinenze riepilogo */}
           {data.pertinenze && data.pertinenze.length > 0 && totalPert > 0 && (
