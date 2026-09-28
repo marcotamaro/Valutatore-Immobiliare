@@ -84,7 +84,7 @@ const initialFormData = {
   imp_elettrico: "", imp_acqua_calda: "", imp_gas: "", cappotto: false,
   ascensore: false, aria_condizionata: false, pannelli_fotovoltaici: false,
   senza_barriere: false, caminetto: false,
-  valore_min: "", valore_medio: "", valore_max: "",
+  valore_min: "", valore_medio: "", valore_max: "", prezzo_pubblicita: "",
   note_valutazione: "", descrizione_manuale: "",
   testo_mercato: "", testo_zona: "", testo_zona_generata_per: "", servizi_zona: "",
   pertinenze: [],
@@ -692,6 +692,23 @@ export default function ValutazioneImmobili() {
                   {form.valore_min && <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Min: {Math.round(Number(form.valore_min) / Number(form.superficie_commerciale)).toLocaleString("it-IT")} €/mq</span>}
                   {form.valore_medio && <span style={{ fontSize: 13, color: accent, fontWeight: 600 }}>Medio: {Math.round(Number(form.valore_medio) / Number(form.superficie_commerciale)).toLocaleString("it-IT")} €/mq</span>}
                   {form.valore_max && <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Max: {Math.round(Number(form.valore_max) / Number(form.superficie_commerciale)).toLocaleString("it-IT")} €/mq</span>}
+                </div>
+              )}
+            </div>
+
+            {/* Prezzo consigliato di pubblicità */}
+            <div style={{ background: `linear-gradient(135deg, #f0faf4, #e6f7ed)`, borderRadius: 12, padding: 22, marginBottom: 20, border: `1.5px solid #b8e6cc` }}>
+              <Row>
+                <Field label="💰 Prezzo Consigliato di Pubblicità (€)" full>
+                  <input type="number" style={{ ...inputStyle, fontSize: 20, fontWeight: 800, padding: "14px 16px", borderColor: "#4caf50", background: "#fff" }} value={form.prezzo_pubblicita} onChange={(e) => update("prezzo_pubblicita", e.target.value)} placeholder="Es. 295.000" />
+                </Field>
+              </Row>
+              <p style={{ fontSize: 12, color: "#6b9f7e", margin: "8px 0 0", lineHeight: 1.5 }}>
+                Il prezzo di pubblicità è il valore consigliato per la messa in vendita dell'immobile, che tiene conto della strategia commerciale e del margine di trattativa.
+              </p>
+              {form.prezzo_pubblicita && form.superficie_commerciale && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "#4caf50", fontWeight: 600 }}>
+                  {Math.round(Number(form.prezzo_pubblicita) / Number(form.superficie_commerciale)).toLocaleString("it-IT")} €/mq
                 </div>
               )}
             </div>
