@@ -133,7 +133,7 @@ export default function Dashboard({ onViewReport } = {}) {
       {/* TABS */}
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px 0" }}>
         <div style={{ display: "flex", gap: 4, background: "#e8eaf0", borderRadius: 10, padding: 3, marginBottom: 20, width: "fit-content" }}>
-          {[{ id: "valutazioni", label: "📋 Valutazioni", count: list.length }, { id: "proprietari", label: "🏠 Proprietari", count: (() => { const p = new Set(); list.forEach(v => { if (v.proprietario_cognome || v.proprietario_nome) p.add(`${v.proprietario_cognome}|${v.proprietario_nome}`); }); return p.size; })() }, { id: "agenti", label: "👤 Agenti", count: agents.length }].map(t => (
+          {[{ id: "valutazioni", label: "📋 Valutazioni", count: list.length }, { id: "proprietari", label: "🏠 Proprietari", count: (() => { const p = new Set(); list.forEach(v => { if (v.proprietario_cognome || v.proprietario_nome) p.add(`${v.proprietario_cognome}|${v.proprietario_nome}`); }); return p.size; })() }].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               padding: "10px 22px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", transition: "all 0.2s",
               background: tab === t.id ? "#fff" : "transparent", color: tab === t.id ? accent : "#888", boxShadow: tab === t.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
@@ -340,69 +340,6 @@ export default function Dashboard({ onViewReport } = {}) {
             )}
           </>);
         })()}
-
-        {/* ═══════════ TAB: AGENTI ═══════════ */}
-        {tab === "agenti" && (<>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 13, color: "#666" }}>{agents.length} agenti registrati</div>
-            <button onClick={startNewAgent} style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans'" }}>+ Nuovo Agente</button>
-          </div>
-
-          {/* Agent form */}
-          {editAgent !== null && (
-            <div style={{ background: "#fff", borderRadius: 12, padding: "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", marginBottom: 16, border: `2px solid ${accent}30` }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: accent, marginBottom: 14 }}>{editAgent.id ? "Modifica Agente" : "Nuovo Agente"}</div>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                <div style={{ flex: "1 1 180px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Nome *</label><input style={iS} value={agentForm.nome} onChange={e => setAgentForm({ ...agentForm, nome: e.target.value })} placeholder="Marco" /></div>
-                <div style={{ flex: "1 1 180px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Cognome *</label><input style={iS} value={agentForm.cognome} onChange={e => setAgentForm({ ...agentForm, cognome: e.target.value })} placeholder="Tamaro" /></div>
-                <div style={{ flex: "1 1 180px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Telefono</label><input style={iS} value={agentForm.telefono} onChange={e => setAgentForm({ ...agentForm, telefono: e.target.value })} placeholder="+39 333 1234567" /></div>
-                <div style={{ flex: "1 1 180px" }}><label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Email</label><input style={iS} value={agentForm.email} onChange={e => setAgentForm({ ...agentForm, email: e.target.value })} placeholder="marco@agenzia.it" /></div>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={saveAgent} disabled={!agentForm.nome || !agentForm.cognome} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: agentForm.nome && agentForm.cognome ? accent : "#ccc", color: "#fff", cursor: agentForm.nome && agentForm.cognome ? "pointer" : "default", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans'" }}>{editAgent.id ? "Salva Modifiche" : "Aggiungi Agente"}</button>
-                <button onClick={() => { setEditAgent(null); setAgentForm({ nome: "", cognome: "", telefono: "", email: "" }); }} style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans'", color: "#666" }}>Annulla</button>
-              </div>
-            </div>
-          )}
-
-          {/* Agent list */}
-          {agents.length === 0 && editAgent === null ? (
-            <div style={{ background: "#fff", borderRadius: 12, padding: 40, textAlign: "center", color: "#999", fontSize: 14, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>Nessun agente registrato. Aggiungi il primo!</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {agents.map(a => {
-                const aVal = list.filter(v => v.agente_nome === `${a.cognome} ${a.nome}` || v.agente_nome === `${a.nome} ${a.cognome}`);
-                return (
-                  <div key={a.id} style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", border: "1px solid #eef0f4", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-                    <div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#1a1a2e" }}>{a.cognome} {a.nome}</div>
-                      <div style={{ fontSize: 12, color: "#999", marginTop: 3 }}>
-                        {[a.telefono, a.email].filter(Boolean).join(" · ") || "Nessun contatto"}
-                      </div>
-                      <div style={{ fontSize: 11, color: accent, marginTop: 4, fontWeight: 600 }}>{aVal.length} valutazion{aVal.length === 1 ? "e" : "i"}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                      <button onClick={() => startEditAgent(a)} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${accent}40`, background: "#fff", color: accent, cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans'" }}>✏️ Modifica</button>
-                      <button onClick={() => setConfirmDeleteAgent(a.id)} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fcc", background: "#fff", color: "#c33", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans'" }}>🗑️</button>
-                    </div>
-                    {confirmDeleteAgent === a.id && (
-                      <div style={{ position: "absolute", right: 20, background: "#fff5f5", border: "1px solid #fcc", borderRadius: 8, padding: "10px 14px", display: "flex", gap: 6, alignItems: "center", boxShadow: "0 2px 10px rgba(0,0,0,0.1)" }}>
-                        <span style={{ fontSize: 12, color: "#c33" }}>Eliminare?</span>
-                        <button onClick={() => setConfirmDeleteAgent(null)} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 11 }}>No</button>
-                        <button onClick={() => deleteAgent(a.id)} style={{ padding: "4px 10px", borderRadius: 5, border: "none", background: "#c33", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Sì</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Info box */}
-          <div style={{ background: `${accent}08`, borderRadius: 10, padding: "14px 18px", marginTop: 20, border: `1px solid ${accent}20`, fontSize: 12, color: "#666", lineHeight: 1.6 }}>
-            💡 <strong>Come funziona:</strong> Gli agenti registrati qui appariranno nel form di inserimento valutazioni come menu a tendina, evitando duplicati. Il formato usato nel report sarà sempre "Cognome Nome" (es. Tamaro Marco).
-          </div>
-        </>)}
 
       </div>
     </div>
