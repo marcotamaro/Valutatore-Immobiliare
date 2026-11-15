@@ -4,14 +4,7 @@ import ReportValutazione from './ReportValutazione';
 import Dashboard from './Dashboard';
 import DatiAgenzia from './DatiAgenzia';
 
-if (!window.storage) {
-  window.storage = {
-    get: async (key) => { const val = localStorage.getItem(`app_${key}`); return val ? { key, value: val } : null; },
-    set: async (key, value) => { localStorage.setItem(`app_${key}`, value); return { key, value }; },
-    delete: async (key) => { localStorage.removeItem(`app_${key}`); return { key, deleted: true }; },
-    list: async (prefix) => { const keys = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith(`app_${prefix || ''}`)) keys.push(k.replace('app_', '')); } return { keys }; }
-  };
-}
+// window.storage (archivio condiviso su database) è impostato in ./storage.js
 
 export default function App() {
   const [page, setPage] = useState('form');

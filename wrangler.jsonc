@@ -1,0 +1,19 @@
+{
+  // Configurazione Cloudflare del Valutatore (valu.tamlab.it)
+  "name": "valutatore",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./build",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "valutatore-db",
+      "database_id": "c59924b3-553f-4f0c-9c72-5967fb374b1f"
+    }
+  ]
+}
