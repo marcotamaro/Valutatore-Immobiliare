@@ -1,5 +1,6 @@
 // Worker Cloudflare del Valutatore:
-//  - protegge tutto il sito con una password unica (variabile segreta APP_PASSWORD)
+//  - accesso con pagina di login (nome utente APP_USERNAME + password APP_PASSWORD, variabili segrete)
+//    e sessione salvata in un cookie firmato, valida 30 giorni
 //  - /api/kv/...  archivio chiave-valore su D1 (valutazioni, zone, testi, agenti, dati agenzia)
 //  - /api/img/... immagini su D1 (foto, loghi, mappe), salvate una volta sola per contenuto
 //  - tutto il resto: i file dell'app React (cartella build)
@@ -13,21 +14,109 @@ const ensureSchema = (db) => (schemaReady ??= db.batch(SCHEMA.map((s) => db.prep
 
 const MAX_IMAGE_BYTES = 1_900_000; // limite di una riga D1 (2 MB)
 
-function unauthorized() {
-  return new Response('Accesso riservato', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="Valutatore TAM", charset="UTF-8"' },
+// --- Accesso -------------------------------------------------------------------
+
+const COOKIE = 'vt_session';
+const SESSION_DAYS = 30;
+const enc = new TextEncoder();
+
+const authEnabled = (env) => Boolean(env.APP_PASSWORD);
+
+async function hmac(env, text) {
+  // la chiave dipende da nome utente e password: cambiandoli, tutte le sessioni aperte scadono
+  const key = await crypto.subtle.importKey('raw', enc.encode(`${env.APP_USERNAME || ''}:${env.APP_PASSWORD}`),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(text));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sameText(env, a, b) {
+  // confronto a tempo costante (tramite firma) per non dare indizi sulla password
+  return (await hmac(env, 'cmp:' + a)) === (await hmac(env, 'cmp:' + b));
+}
+
+function readCookie(request, name) {
+  const m = (request.headers.get('Cookie') || '').match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
+  return m ? m[1] : null;
+}
+
+async function hasValidSession(request, env) {
+  const c = readCookie(request, COOKIE);
+  if (!c) return false;
+  const [exp, sig] = c.split('.');
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  return sig === (await hmac(env, 'session:' + exp));
+}
+
+async function sessionCookie(env) {
+  const exp = Date.now() + SESSION_DAYS * 86400_000;
+  const sig = await hmac(env, 'session:' + exp);
+  return `${COOKIE}=${exp}.${sig}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function loginPage(error = '', username = '') {
+  return new Response(`<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accesso · Valutatore TAM</title><meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+  font-family:'DM Sans',system-ui,sans-serif;background:linear-gradient(135deg,#0f2539,#1a3a5c);color:#1a2b3c}
+.card{width:100%;max-width:380px;background:#fff;border-radius:16px;padding:36px 32px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.mark{width:48px;height:48px;border-radius:12px;background:#1a3a5c;color:#e8b86d;display:grid;place-items:center;
+  font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:700;margin:0 auto 16px}
+h1{font-family:'Playfair Display',Georgia,serif;font-size:24px;text-align:center;color:#0f2539}
+.sub{text-align:center;color:#6b7785;font-size:14px;margin:6px 0 26px}
+label{display:block;font-size:13px;font-weight:600;color:#3a4a5c;margin:0 0 6px}
+input{width:100%;padding:12px 14px;border:1px solid #d8dce6;border-radius:10px;font:inherit;font-size:15px;margin-bottom:16px;outline:none}
+input:focus{border-color:#1a3a5c;box-shadow:0 0 0 3px rgba(26,58,92,.15)}
+button{width:100%;padding:13px;border:none;border-radius:10px;background:#1a3a5c;color:#fff;font:inherit;font-weight:600;font-size:15px;cursor:pointer;margin-top:4px}
+button:hover{background:#0f2539}
+.err{background:#fdecea;color:#b3261e;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:16px;text-align:center}
+.foot{text-align:center;color:#9aa5b1;font-size:12px;margin-top:22px}
+</style></head><body>
+<form class="card" method="POST" action="/login">
+  <div class="mark">T</div>
+  <h1>Valutatore</h1>
+  <p class="sub">TAM Immobiliare · accesso riservato</p>
+  ${error ? `<div class="err">${esc(error)}</div>` : ''}
+  <label for="u">Nome utente</label>
+  <input id="u" name="username" autocomplete="username" required autofocus value="${esc(username)}">
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Accedi</button>
+  <p class="foot">Beta · TAM Lab</p>
+</form></body></html>`, {
+    status: error ? 401 : 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
   });
 }
 
-function checkPassword(request, env) {
-  if (!env.APP_PASSWORD) return true; // senza password impostata il sito resta aperto
-  const auth = request.headers.get('Authorization') || '';
-  if (!auth.startsWith('Basic ')) return false;
-  try {
-    const [, pass] = atob(auth.slice(6)).split(/:(.*)/s);
-    return pass === env.APP_PASSWORD;
-  } catch { return false; }
+async function handleAuth(request, env, url) {
+  if (url.pathname === '/logout') {
+    return new Response(null, { status: 302, headers: {
+      Location: '/login', 'Set-Cookie': `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax` } });
+  }
+  if (url.pathname === '/login' && request.method === 'POST') {
+    const form = await request.formData();
+    const user = String(form.get('username') || '').trim();
+    const pass = String(form.get('password') || '');
+    const okUser = env.APP_USERNAME ? await sameText(env, user, env.APP_USERNAME) : true;
+    const okPass = await sameText(env, pass, env.APP_PASSWORD);
+    if (okUser && okPass) {
+      return new Response(null, { status: 302, headers: { Location: '/', 'Set-Cookie': await sessionCookie(env) } });
+    }
+    await new Promise((r) => setTimeout(r, 1000)); // rallenta i tentativi a caso
+    return loginPage('Nome utente o password non corretti.', user);
+  }
+  if (url.pathname === '/login') {
+    if (await hasValidSession(request, env)) return Response.redirect(url.origin + '/', 302);
+    return loginPage();
+  }
+  return null;
 }
 
 const json = (data, status = 200) =>
@@ -96,8 +185,15 @@ async function handleApi(request, env, url) {
 
 export default {
   async fetch(request, env) {
-    if (!checkPassword(request, env)) return unauthorized();
     const url = new URL(request.url);
+    if (authEnabled(env)) {
+      const authResponse = await handleAuth(request, env, url);
+      if (authResponse) return authResponse;
+      if (!(await hasValidSession(request, env))) {
+        if (url.pathname.startsWith('/api/')) return json({ error: 'accesso scaduto, ricarica la pagina' }, 401);
+        return Response.redirect(url.origin + '/login', 302);
+      }
+    }
     if (url.pathname.startsWith('/api/')) {
       try { return await handleApi(request, env, url); }
       catch (e) { return json({ error: e.message }, 500); }

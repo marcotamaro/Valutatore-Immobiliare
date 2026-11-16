@@ -12,6 +12,7 @@ const JPEG_QUALITY = 0.78;
 
 async function req(path, opts = {}) {
   const res = await fetch(API + path, { credentials: 'same-origin', ...opts });
+  if (res.status === 401) { window.location.href = '/login'; throw new Error('Accesso scaduto'); }
   if (!res.ok && res.status !== 404) throw new Error(`Errore archivio (${res.status})`);
   return res;
 }

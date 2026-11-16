@@ -28,6 +28,7 @@ export default function App() {
           <button style={navStyle('dashboard')} onClick={() => setPage('dashboard')}>📊 Dashboard</button>
           <button style={navStyle('form')} onClick={() => setPage('form')}>📝 Nuova Valutazione</button>
           <button style={navStyle('agenzia')} onClick={() => setPage('agenzia')}>🏢 Dati Agenzia</button>
+          <a href="/logout" style={{ ...navStyle('logout'), textDecoration: 'none', position: 'absolute', right: 16, background: 'transparent', opacity: 0.8 }}>Esci</a>
         </div>
       )}
 
