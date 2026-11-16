@@ -2,13 +2,49 @@
 //  - accesso con pagina di login (nome utente APP_USERNAME + password APP_PASSWORD, variabili segrete)
 //    e sessione salvata in un cookie firmato, valida 30 giorni
 //  - /api/kv/...  archivio chiave-valore su D1 (valutazioni, zone, testi, agenti, dati agenzia)
+//  - /api/col/...  valutazioni, agenti e zone: un record per scheda, così due persone che
+//                   lavorano insieme non si sovrascrivono a vicenda
+//  - /api/lock/... blocco "in modifica": una valutazione aperta in modifica da un utente
+//                   non può essere modificata né eliminata da un altro finché non la chiude
 //  - /api/img/... immagini su D1 (foto, loghi, mappe), salvate una volta sola per contenuto
 //  - tutto il resto: i file dell'app React (cartella build)
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS images (id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS items (coll TEXT NOT NULL, id TEXT NOT NULL, value TEXT NOT NULL, pos INTEGER NOT NULL DEFAULT 0,
+     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (coll, id))`,
+  `CREATE TABLE IF NOT EXISTS locks (id TEXT PRIMARY KEY, holder TEXT NOT NULL, since TEXT NOT NULL, expires INTEGER NOT NULL)`,
 ];
+
+// Blocco "in modifica": l'app lo rinnova ogni minuto finché il form è aperto.
+// Se il browser si chiude di colpo, il blocco scade da solo dopo 3 minuti.
+const LOCK_TTL_MS = 3 * 60 * 1000;
+const holderOf = (request) => String(request.headers.get('X-Holder') || '').slice(0, 64);
+
+async function lockedByOther(db, id, holder) {
+  const row = await db.prepare('SELECT holder, since, expires FROM locks WHERE id = ?1').bind(id).first();
+  return row && row.expires > Date.now() && row.holder !== holder ? row : null;
+}
+
+// Elenchi salvati scheda per scheda (prima erano un unico blocco nella tabella kv)
+const COLLECTIONS = new Set(['valutazioni_list', 'agents_list', 'zones_config']);
+
+// Trasferimento una tantum: l'elenco salvato come blocco unico diventa un record per scheda.
+// Il blocco originale resta come copia di sicurezza con il nome "<elenco>__copia_prima_dei_record".
+async function migrateCollection(db, coll) {
+  const row = await db.prepare('SELECT value FROM kv WHERE key = ?1').bind(coll).first();
+  if (!row) return;
+  let arr = [];
+  try { arr = JSON.parse(row.value) || []; } catch (e) { arr = []; }
+  const now = new Date().toISOString();
+  const stmts = (Array.isArray(arr) ? arr : []).filter((it) => it && it.id != null).map((it, i) =>
+    db.prepare('INSERT OR IGNORE INTO items (coll, id, value, pos, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)')
+      .bind(coll, String(it.id), JSON.stringify(it), i, now));
+  stmts.push(db.prepare('INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES (?1, ?2, ?3)').bind(coll + '__copia_prima_dei_record', row.value, now));
+  stmts.push(db.prepare('DELETE FROM kv WHERE key = ?1').bind(coll));
+  await db.batch(stmts);
+}
 let schemaReady = null;
 const ensureSchema = (db) => (schemaReady ??= db.batch(SCHEMA.map((s) => db.prepare(s))));
 
@@ -134,7 +170,70 @@ async function handleApi(request, env, url) {
   const [, kind, rawId] = parts;
   const id = rawId ? decodeURIComponent(rawId) : null;
 
+  if (kind === 'col') {
+    const coll = id;
+    const itemId = parts[3] ? decodeURIComponent(parts[3]) : null;
+    if (!COLLECTIONS.has(coll)) return json({ error: 'elenco sconosciuto' }, 400);
+    await migrateCollection(db, coll);
+    if (!itemId && request.method === 'GET') {
+      const { results } = await db.prepare('SELECT value FROM items WHERE coll = ?1 ORDER BY pos, created_at').bind(coll).all();
+      return new Response('[' + results.map((r) => r.value).join(',') + ']', { headers: { 'Content-Type': 'application/json' } });
+    }
+    if (!itemId) return json({ error: 'scheda mancante' }, 400);
+    if (coll === 'valutazioni_list' && (request.method === 'PUT' || request.method === 'DELETE')) {
+      const other = await lockedByOther(db, itemId, holderOf(request));
+      if (other) return json({ error: 'Valutazione aperta da un altro utente', since: other.since }, 423);
+    }
+    if (request.method === 'PUT') {
+      const value = await request.text();
+      try { JSON.parse(value); } catch (e) { return json({ error: 'dati non validi' }, 400); }
+      const posParam = url.searchParams.get('pos');
+      const pos = posParam === null || posParam === '' ? null : Number(posParam);
+      const now = new Date().toISOString();
+      // senza "pos" una scheda nuova va in fondo all'elenco e una esistente resta al suo posto
+      await db.prepare(`INSERT INTO items (coll, id, value, pos, created_at, updated_at)
+                        VALUES (?1, ?2, ?3, COALESCE(?4, (SELECT COALESCE(MAX(pos), -1) + 1 FROM items WHERE coll = ?1)), ?5, ?5)
+                        ON CONFLICT(coll, id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at,
+                          pos = CASE WHEN ?4 IS NULL THEN items.pos ELSE excluded.pos END`)
+        .bind(coll, itemId, value, pos, now).run();
+      return json({ ok: true });
+    }
+    if (request.method === 'DELETE') {
+      await db.prepare('DELETE FROM items WHERE coll = ?1 AND id = ?2').bind(coll, itemId).run();
+      if (coll === 'valutazioni_list') await db.prepare('DELETE FROM locks WHERE id = ?1').bind(itemId).run();
+      return json({ ok: true });
+    }
+  }
+
+  if (kind === 'lock') {
+    const holder = holderOf(request);
+    const now = Date.now();
+    if (!id && request.method === 'GET') {
+      const { results } = await db.prepare('SELECT id, holder, since FROM locks WHERE expires > ?1').bind(now).all();
+      return json(results.map((r) => ({ id: r.id, since: r.since, mine: r.holder === holder })));
+    }
+    if (!id || !holder) return json({ error: 'richiesta non valida' }, 400);
+    if (request.method === 'POST') {
+      // prende il blocco se è libero, scaduto o già suo (in quel caso lo rinnova)
+      await db.prepare(`INSERT INTO locks (id, holder, since, expires) VALUES (?1, ?2, ?3, ?4)
+                        ON CONFLICT(id) DO UPDATE SET
+                          since = CASE WHEN locks.holder = excluded.holder THEN locks.since ELSE excluded.since END,
+                          holder = excluded.holder, expires = excluded.expires
+                        WHERE locks.holder = excluded.holder OR locks.expires <= ?5`)
+        .bind(id, holder, new Date(now).toISOString(), now + LOCK_TTL_MS, now).run();
+      const row = await db.prepare('SELECT holder, since FROM locks WHERE id = ?1').bind(id).first();
+      return row && row.holder === holder ? json({ ok: true, since: row.since }) : json({ ok: false, since: row && row.since }, 423);
+    }
+    if (request.method === 'DELETE') {
+      await db.prepare('DELETE FROM locks WHERE id = ?1 AND holder = ?2').bind(id, holder).run();
+      return json({ ok: true });
+    }
+  }
+
   if (kind === 'kv') {
+    // gli elenchi ora vivono in /api/col: una versione vecchia dell'app aperta da prima dell'aggiornamento
+    // non deve riscriverli come blocco unico
+    if (id && COLLECTIONS.has(id)) return json({ error: 'app aggiornata: ricarica la pagina' }, 409);
     if (!id && request.method === 'GET') {
       const prefix = url.searchParams.get('prefix') || '';
       const { results } = await db.prepare(`SELECT key FROM kv WHERE key LIKE ?1 ESCAPE '\\' ORDER BY key`)

@@ -10,10 +10,20 @@ const API = '/api';
 const MAX_SIDE = 1400;      // lato massimo delle foto, in pixel (A4 stampato: più che sufficiente)
 const JPEG_QUALITY = 0.78;
 
+// Identifica questa scheda del browser (serve al blocco "in modifica": con l'accesso unico
+// tutti entrano con lo stesso utente, quindi si distingue la postazione, non la persona)
+const HOLDER = (() => {
+  try {
+    let h = sessionStorage.getItem('vt_holder');
+    if (!h) { h = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); sessionStorage.setItem('vt_holder', h); }
+    return h;
+  } catch (e) { return String(Math.random()).slice(2) + Date.now(); }
+})();
+
 async function req(path, opts = {}) {
-  const res = await fetch(API + path, { credentials: 'same-origin', ...opts });
+  const res = await fetch(API + path, { credentials: 'same-origin', ...opts, headers: { 'X-Holder': HOLDER, ...(opts.headers || {}) } });
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Accesso scaduto'); }
-  if (!res.ok && res.status !== 404) throw new Error(`Errore archivio (${res.status})`);
+  if (!res.ok && res.status !== 404) { const err = new Error(`Errore archivio (${res.status})`); err.status = res.status; throw err; }
   return res;
 }
 
@@ -78,22 +88,98 @@ async function extractImages(value) {
   return out;
 }
 
+// --- Elenchi salvati scheda per scheda ----------------------------------------
+// Valutazioni, agenti e zone restano per l'app un unico elenco (stessa interfaccia di prima),
+// ma sul server ogni scheda è un record a sé. Quando l'app salva l'elenco, vengono inviate
+// solo le schede nuove o cambiate e cancellate solo quelle che chi salva ha tolto:
+// così le schede aggiunte nel frattempo da un collega non vengono mai sovrascritte.
+
+const COLLECTIONS = new Set(['valutazioni_list', 'agents_list', 'zones_config']);
+const ORDERED = new Set(['agents_list', 'zones_config']); // qui conta anche l'ordine
+const seen = new Map(); // elenco -> Map(id -> { json, pos }) come l'ha visto questa scheda del browser
+
+async function colGet(coll) {
+  const res = await req('/col/' + coll);
+  const arr = await res.json();
+  const m = new Map();
+  arr.forEach((it, i) => m.set(String(it.id), { json: JSON.stringify(it), pos: i }));
+  seen.set(coll, m);
+  return arr.length ? { key: coll, value: JSON.stringify(arr) } : null;
+}
+
+async function colSet(coll, value) {
+  const v = await extractImages(String(value));
+  const arr = JSON.parse(v || '[]');
+  const prev = seen.get(coll) || new Map();
+  const next = new Map();
+  const ops = [];
+  arr.forEach((it, i) => {
+    if (!it || typeof it !== 'object') return;
+    if (it.id == null) it.id = Date.now() + i;
+    const id = String(it.id), json = JSON.stringify(it);
+    next.set(id, { json, pos: i });
+    const p = prev.get(id);
+    const moved = ORDERED.has(coll) && p && p.pos !== i;
+    if (!p || p.json !== json || moved) {
+      const pos = ORDERED.has(coll) ? `?pos=${i}` : '';
+      ops.push(req(`/col/${coll}/${encodeURIComponent(id)}${pos}`, { method: 'PUT', body: json }));
+    }
+  });
+  for (const id of prev.keys()) {
+    if (!next.has(id)) ops.push(req(`/col/${coll}/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+  }
+  await Promise.all(ops);
+  seen.set(coll, next);
+  return { key: coll, value: v };
+}
+
+// Aree di passaggio tra una pagina e l'altra dell'app: restano nella scheda del browser
+// (altrimenti un collega che apre "Nuova Valutazione" troverebbe la valutazione aperta da un altro)
+const LOCAL_ONLY = new Set(['edit_valutazione', 'view_report_data']);
+const ss = {
+  get(key) { try { const v = sessionStorage.getItem('vt_' + key); return v == null ? null : { key, value: v }; } catch (e) { return null; } },
+  set(key, value) { try { sessionStorage.setItem('vt_' + key, String(value)); } catch (e) {} return { key, value }; },
+  delete(key) { try { sessionStorage.removeItem('vt_' + key); } catch (e) {} return { key, deleted: true }; },
+};
+
 // --- Interfaccia window.storage ----------------------------------------------
 
 const storage = {
   async get(key) {
+    if (LOCAL_ONLY.has(key)) return ss.get(key);
+    if (COLLECTIONS.has(key)) return colGet(key);
     const res = await req('/kv/' + encodeURIComponent(key));
     if (res.status === 404) return null;
     return { key, value: await res.text() };
   },
   async set(key, value) {
+    if (LOCAL_ONLY.has(key)) return ss.set(key, value);
+    if (COLLECTIONS.has(key)) return colSet(key, value);
     const v = await extractImages(String(value));
     await req('/kv/' + encodeURIComponent(key), { method: 'PUT', body: v });
     return { key, value: v };
   },
   async delete(key) {
+    if (LOCAL_ONLY.has(key)) return ss.delete(key);
+    if (COLLECTIONS.has(key)) return colSet(key, '[]');
     await req('/kv/' + encodeURIComponent(key), { method: 'DELETE' });
     return { key, deleted: true };
+  },
+  // Blocco "in modifica" di una valutazione
+  async lock(id) {
+    try {
+      const res = await fetch(`${API}/lock/${encodeURIComponent(id)}`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Holder': HOLDER } });
+      if (res.status === 401) { window.location.href = '/login'; return { ok: false, error: true }; }
+      const d = await res.json().catch(() => ({}));
+      return res.ok ? { ok: true, since: d.since } : { ok: false, since: d.since || null, error: res.status !== 423 };
+    } catch (e) { return { ok: false, error: true }; }
+  },
+  unlock(id) {
+    try { fetch(`${API}/lock/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'same-origin', keepalive: true, headers: { 'X-Holder': HOLDER } }); } catch (e) {}
+  },
+  async locks() {
+    const res = await req('/lock');
+    return res.json();
   },
   async list(prefix = '') {
     const res = await req('/kv?prefix=' + encodeURIComponent(prefix));
@@ -105,7 +191,11 @@ const storage = {
 function withAlert(fn, what) {
   return async (...args) => {
     try { return await fn(...args); }
-    catch (e) { alert(`Attenzione: ${what} non riuscito. Controlla la connessione e riprova.\n(${e.message})`); throw e; }
+    catch (e) {
+      // 423 = valutazione aperta da un altro utente: lo spiegano le pagine dell'app, niente avviso generico
+      if (e.status !== 423) alert(`Attenzione: ${what} non riuscito. Controlla la connessione e riprova.\n(${e.message})`);
+      throw e;
+    }
   };
 }
 storage.set = withAlert(storage.set, 'salvataggio');

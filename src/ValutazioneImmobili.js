@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { mergeTexts } from "./reportTexts";
 
 const PERTINENZE_TYPES = [
   { id: "cantina", label: "Cantina", icon: "🏚️" },
@@ -52,11 +53,94 @@ const LIVELLI_IMMOBILE = ["", "Disposto principalmente su 1 livello", "Disposto 
 
 const ALTRI_VANI = ["", "Mansarda", "Taverna", "Seminterrato", "Sottotetto", "Soppalco"];
 
-const IMP_ELETTRICO = ["", "Certificato", "Funzionante", "Da rifare"];
+const CATEGORIE_CATASTALI = [
+  ["Gruppo A — Abitazioni e uffici", [
+    ["A/1", "Abitazioni di tipo signorile"], ["A/2", "Abitazioni di tipo civile"], ["A/3", "Abitazioni di tipo economico"],
+    ["A/4", "Abitazioni di tipo popolare"], ["A/5", "Abitazioni di tipo ultrapopolare"], ["A/6", "Abitazioni di tipo rurale"],
+    ["A/7", "Abitazioni in villini"], ["A/8", "Abitazioni in ville"], ["A/9", "Castelli, palazzi di eminente pregio artistico o storico"],
+    ["A/10", "Uffici e studi privati"], ["A/11", "Abitazioni e alloggi tipici dei luoghi"],
+  ]],
+  ["Gruppo B — Uso collettivo", [
+    ["B/1", "Collegi, convitti, ricoveri, conventi, caserme"], ["B/2", "Case di cura e ospedali (senza fine di lucro)"],
+    ["B/3", "Prigioni e riformatori"], ["B/4", "Uffici pubblici"], ["B/5", "Scuole e laboratori scientifici"],
+    ["B/6", "Biblioteche, musei, gallerie, accademie"], ["B/7", "Cappelle e oratori non destinati al culto pubblico"],
+    ["B/8", "Magazzini sotterranei per depositi di derrate"],
+  ]],
+  ["Gruppo C — Commerciali, depositi, box", [
+    ["C/1", "Negozi e botteghe"], ["C/2", "Magazzini e locali di deposito (cantine, soffitte)"], ["C/3", "Laboratori per arti e mestieri"],
+    ["C/4", "Fabbricati per esercizi sportivi (senza fine di lucro)"], ["C/5", "Stabilimenti balneari e di acque curative (senza fine di lucro)"],
+    ["C/6", "Stalle, scuderie, rimesse, autorimesse (box e posti auto)"], ["C/7", "Tettoie chiuse o aperte"],
+  ]],
+  ["Gruppo D — Destinazione speciale", [
+    ["D/1", "Opifici"], ["D/2", "Alberghi e pensioni"], ["D/3", "Teatri, cinematografi, sale per spettacoli"],
+    ["D/4", "Case di cura e ospedali (con fine di lucro)"], ["D/5", "Istituti di credito, cambio e assicurazione"],
+    ["D/6", "Fabbricati per esercizi sportivi (con fine di lucro)"], ["D/7", "Fabbricati per attività industriali"],
+    ["D/8", "Fabbricati per attività commerciali"], ["D/9", "Edifici galleggianti o sospesi, ponti privati a pedaggio"],
+    ["D/10", "Fabbricati per funzioni produttive agricole"],
+  ]],
+  ["Gruppo E — Destinazione particolare", [
+    ["E/1", "Stazioni per servizi di trasporto"], ["E/2", "Ponti comunali e provinciali a pedaggio"],
+    ["E/3", "Costruzioni per speciali esigenze pubbliche"], ["E/4", "Recinti chiusi per speciali esigenze pubbliche"],
+    ["E/5", "Fortificazioni e loro dipendenze"], ["E/6", "Fari, semafori, torri dell'orologio comunale"],
+    ["E/7", "Fabbricati per l'esercizio pubblico dei culti"], ["E/8", "Fabbricati e costruzioni nei cimiteri"],
+    ["E/9", "Altri edifici a destinazione particolare"],
+  ]],
+  ["Gruppo F — Categorie fittizie", [
+    ["F/1", "Area urbana"], ["F/2", "Unità collabenti"], ["F/3", "Unità in corso di costruzione"],
+    ["F/4", "Unità in corso di definizione"], ["F/5", "Lastrico solare"],
+  ]],
+];
+
+// Portali riconosciuti per i comparabili
+const PORTALI = [
+  { dominio: "immobiliare.it", nome: "Immobiliare.it" },
+  { dominio: "idealista.it", nome: "idealista" },
+  { dominio: "casa.it", nome: "Casa.it" },
+  { dominio: "subito.it", nome: "Subito" },
+];
+const portaleDa = (url) => {
+  try {
+    const h = new URL(url.trim()).hostname.replace(/^www\./, "");
+    const p = PORTALI.find(p => h === p.dominio || h.endsWith("." + p.dominio));
+    return p ? p.nome : "";
+  } catch (e) { return ""; }
+};
+// Riduce le foto caricate (max 900 px, JPEG)
+const resizeImage = (file, max = 900) => new Promise((resolve) => {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => resolve(ev.target.result);
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+const perMq = (prezzo, mq) => (Number(prezzo) && Number(mq) ? Math.round(Number(prezzo) / Number(mq)) : null);
+const media = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+
+const IMP_ELETTRICO = ["", "Certificato", "Funzionante (non certificato)", "Da rifare (non certificato)"];
+
+const IMP_RISCALDAMENTO = ["", "Certificato", "Funzionante (non certificato)", "Da rifare (non certificato)"];
 
 const IMP_ACQUA_CALDA = ["", "Autonoma boiler elettrico", "Autonoma pompa di calore", "Autonoma caldaia", "Centralizzata", "Da rifare"];
 
-const IMP_GAS = ["", "Certificato", "Funzionante", "Assente"];
+const IMP_GAS = ["", "Certificato", "Funzionante (non certificato)", "Da rifare (non certificato)", "Assente"];
+
+// Valori salvati prima dell'aggiunta di "(non certificato)"
+const normImpianti = (d) => {
+  const m = { "Funzionante": "Funzionante (non certificato)", "Da rifare": "Da rifare (non certificato)" };
+  const out = { ...d };
+  ["imp_elettrico", "imp_gas", "imp_riscaldamento"].forEach(k => { if (m[out[k]]) out[k] = m[out[k]]; });
+  return out;
+};
 
 
 
@@ -67,7 +151,7 @@ const initialFormData = {
   agente_nome: "", agente_telefono: "", agente_email: "",
   tipologia: "Appartamento", indirizzo: "", civico: "", cap: "34100", citta: "Trieste",
   zona: "", piano: "", totale_piani: "", scala: "",
-  catasto_mappa: "", catasto_foglio: "", catasto_particella: "", catasto_subalterno: "",
+  catasto_mappa: "", catasto_foglio: "", catasto_particella: "", catasto_subalterno: "", catasto_categoria: "",
   proprietario_nome: "", proprietario_cognome: "", proprietario_telefono: "", proprietario_email: "",
   lat: null, lng: null, mappa_img: null,
   superficie_commerciale: "", locali: "", camere: "", bagni: "",
@@ -81,13 +165,17 @@ const initialFormData = {
   condizioni_facciate: "", tipologia_edificio: "",
   condizioni_tetto: "", condizioni_atrio: "", spese_condominiali: "", facilita_accesso: "",
   area_verde_condominiale: false, parcheggi_condominiali: false,
-  imp_elettrico: "", imp_acqua_calda: "", imp_gas: "", cappotto: false,
+  imp_elettrico: "", imp_acqua_calda: "", imp_gas: "", imp_riscaldamento: "", cappotto: false,
   ascensore: false, aria_condizionata: false, pannelli_fotovoltaici: false,
   senza_barriere: false, caminetto: false,
+  domotica: false, videocitofono: false, porta_blindata: false, vincolo_belle_arti: false,
   valore_min: "", valore_medio: "", valore_max: "", prezzo_pubblicita: "",
   note_valutazione: "", descrizione_manuale: "",
   testo_mercato: "", testo_zona: "", testo_zona_generata_per: "", servizi_zona: "",
   pertinenze: [],
+  comparabili: [], vendite_zona: [],
+  analisi_target: "",
+  acquirenti_numero: "", acquirenti_budget_min: "", acquirenti_budget_max: "", acquirenti_nota: "",
   data_valutazione: new Date().toISOString().split("T")[0],
 };
 
@@ -147,8 +235,10 @@ const Select = ({ value, onChange, options, placeholder }) => (
   </select>
 );
 
-export default function ValutazioneImmobili() {
+export default function ValutazioneImmobili({ onSaved = null } = {}) {
   const [form, setForm] = useState(initialFormData);
+  const [saveMsg, setSaveMsg] = useState(null);
+  const [globalTexts, setGlobalTexts] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [logoPreview, setLogoPreview] = useState(null);
   const [agentsList, setAgentsList] = useState([]);
@@ -181,6 +271,11 @@ export default function ValutazioneImmobili() {
           { id: 13, nome: "Prosecco, Aurisina, Santa Croce, Sistiana, Duino" },
           { id: 14, nome: "Domio, San Dorligo della Valle, San Giuseppe, Log" }, { id: 15, nome: "Muggia" },
         ]);
+        // Titoli e frasi del report (Dati Agenzia → Testi Report)
+        const rtRes = await window.storage.get("report_texts");
+        const rt = mergeTexts(rtRes && rtRes.value ? JSON.parse(rtRes.value) : null);
+        setGlobalTexts(rt);
+        setForm(f => ({ ...f, titolo_valutazione: f.titolo_valutazione === initialFormData.titolo_valutazione ? rt.copertina_titolo : f.titolo_valutazione }));
         // Load saved mercato text
         const mercRes = await window.storage.get("saved_testo_mercato");
         if (mercRes && mercRes.value) {
@@ -190,7 +285,7 @@ export default function ValutazioneImmobili() {
         // Check if editing existing valutazione
         const editRes = await window.storage.get("edit_valutazione");
         if (editRes && editRes.value) {
-          const editData = JSON.parse(editRes.value);
+          const editData = normImpianti(JSON.parse(editRes.value));
           setForm((f) => ({ ...f, ...editData }));
           if (editData.agenzia_logo) setLogoPreview(editData.agenzia_logo);
           await window.storage.delete("edit_valutazione");
@@ -199,6 +294,20 @@ export default function ValutazioneImmobili() {
     })();
   }, []);
 
+  // Blocco "in modifica": mentre il form è aperto su una valutazione già salvata, nessun altro può
+  // modificarla o eliminarla. Si rinnova ogni minuto e si toglie quando si esce dal form.
+  useEffect(() => {
+    const id = form.id;
+    if (!id || !window.storage || !window.storage.lock) return;
+    let alive = true;
+    const take = async () => { if (alive) await window.storage.lock(id); };
+    take();
+    const t = setInterval(take, 60000);
+    const release = () => window.storage.unlock(id);
+    window.addEventListener("pagehide", release);
+    return () => { alive = false; clearInterval(t); window.removeEventListener("pagehide", release); window.storage.unlock(id); };
+  }, [form.id]);
+
   const update = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
   const addPertinenza = (type) => {
@@ -206,6 +315,9 @@ export default function ValutazioneImmobili() {
     setForm((f) => ({ ...f, pertinenze: [...f.pertinenze, { id: Date.now(), tipo: type, label: p.label, icon: p.icon, superficie: "", valore: "", note: "" }] }));
   };
   const updatePertinenza = (id, key, val) => setForm((f) => ({ ...f, pertinenze: f.pertinenze.map((p) => (p.id === id ? { ...p, [key]: val } : p)) }));
+  const addItem = (key, obj) => setForm((f) => ({ ...f, [key]: [...(f[key] || []), { id: Date.now() + Math.random(), ...obj }] }));
+  const updItem = (key, id, patch) => setForm((f) => ({ ...f, [key]: f[key].map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  const removeItem = (key, id) => setForm((f) => ({ ...f, [key]: f[key].filter((x) => x.id !== id) }));
   const removePertinenza = (id) => setForm((f) => ({ ...f, pertinenze: f.pertinenze.filter((p) => p.id !== id) }));
 
   const totalValue = (which) => {
@@ -222,19 +334,23 @@ export default function ValutazioneImmobili() {
   };
 
   const saveValutazione = async () => {
-    const valutazione = { ...form, agenzia_logo: logoPreview, created_at: new Date().toISOString(), id: Date.now() };
+    const now = new Date().toISOString();
+    // report_texts: copia dei titoli e delle frasi del report al momento della prima creazione
+    const valutazione = { ...form, agenzia_logo: logoPreview, report_texts: form.report_texts || globalTexts || mergeTexts(), id: form.id || Date.now(), created_at: form.created_at || now, updated_at: now };
     try {
       const existing = await window.storage.get("valutazioni_list");
       let list = [];
       if (existing && existing.value) list = JSON.parse(existing.value);
-      list.push(valutazione);
+      const idx = list.findIndex(v => v.id === valutazione.id);
+      if (idx >= 0) list[idx] = valutazione; else list.push(valutazione);
+      setForm(f => ({ ...f, id: valutazione.id, created_at: valutazione.created_at, report_texts: valutazione.report_texts }));
       await window.storage.set("valutazioni_list", JSON.stringify(list));
       return true;
-    } catch (e) { return false; }
+    } catch (e) { return e && e.status === 423 ? "locked" : false; }
   };
 
   const generateTexts = () => {
-    const mercato = form.testo_mercato || `Il mercato immobiliare triestino presenta caratteristiche peculiari legate alla posizione geografica di confine, alla forte identità culturale della città e ad un tessuto urbano prevalentemente storico. Trieste è una città che negli ultimi anni ha registrato un crescente interesse da parte di acquirenti, anche internazionali, attratti dalla qualità della vita, dai costi ancora competitivi rispetto ad altre città italiane di dimensioni analoghe e dalla crescente offerta culturale e turistica.\n\nIl comparto residenziale mostra una domanda sostenuta nelle zone centrali e semicentrali, con particolare interesse per gli immobili ristrutturati o in buono stato di conservazione.\n\nI tempi medi di vendita si attestano tra i 3 e i 6 mesi per immobili correttamente posizionati nel prezzo.`;
+    const mercato = form.testo_mercato || `Il mercato immobiliare triestino presenta caratteristiche peculiari legate alla posizione geografica di confine, alla forte identità culturale della città e ad un tessuto urbano prevalentemente storico. Trieste è una città che negli ultimi anni ha registrato un crescente interesse da parte di acquirenti, anche internazionali, attratti dalla qualità della vita, dai costi ancora competitivi rispetto ad altre città italiane di dimensioni analoghe e dalla crescente offerta culturale e turistica.\n\nIl comparto residenziale mostra una domanda sostenuta nelle zone centrali e semicentrali, con particolare interesse per gli immobili ristrutturati o in buono stato di manutenzione.\n\nI tempi medi di vendita si attestano tra i 3 e i 6 mesi per immobili correttamente posizionati nel prezzo.`;
 
     // Check zones config first for zone description
     const zonaConfig = zonesConfig.find(z => z.nome === form.zona);
@@ -394,6 +510,16 @@ export default function ValutazioneImmobili() {
             </Row>
             <Row>
               <Field label="Subalterno" third><input style={inputStyle} value={form.catasto_subalterno} onChange={(e) => update("catasto_subalterno", e.target.value)} placeholder="6" /></Field>
+              <Field label="Categoria Catastale">
+                <select id="catasto-categoria" style={{ ...selectStyle, color: form.catasto_categoria ? "var(--text-primary)" : "#999" }} value={form.catasto_categoria} onChange={(e) => update("catasto_categoria", e.target.value)}>
+                  <option value="">— Seleziona —</option>
+                  {CATEGORIE_CATASTALI.map(([gruppo, voci]) => (
+                    <optgroup key={gruppo} label={gruppo}>
+                      {voci.map(([cod, desc]) => <option key={cod} value={cod}>{cod} — {desc}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </Field>
             </Row>
 
             {/* Proprietario */}
@@ -518,6 +644,7 @@ export default function ValutazioneImmobili() {
               <Toggle label="Senza Barriere Architettoniche" checked={form.senza_barriere} onChange={() => update("senza_barriere", !form.senza_barriere)} />
               <Toggle label="Area Verde Condominiale" checked={form.area_verde_condominiale} onChange={() => update("area_verde_condominiale", !form.area_verde_condominiale)} />
               <Toggle label="Parcheggi Condominiali Liberi" checked={form.parcheggi_condominiali} onChange={() => update("parcheggi_condominiali", !form.parcheggi_condominiali)} />
+              <Toggle label="Stabile Vincolato Belle Arti" checked={form.vincolo_belle_arti} onChange={() => update("vincolo_belle_arti", !form.vincolo_belle_arti)} />
             </div>
           </div>
         )}
@@ -532,7 +659,7 @@ export default function ValutazioneImmobili() {
               <Field label="Superficie Commerciale Interna (mq) *" half>
                 <input type="number" style={inputStyle} value={form.superficie_commerciale} onChange={(e) => update("superficie_commerciale", e.target.value)} placeholder="85" />
               </Field>
-              <Field label="Stato di Conservazione" half>
+              <Field label="Stato Manutenzione" half>
                 <Select value={form.stato_conservazione} onChange={(e) => update("stato_conservazione", e.target.value)} options={STATI_CONSERVAZIONE} />
               </Field>
             </Row>
@@ -586,22 +713,27 @@ export default function ValutazioneImmobili() {
 
             <SubLabel>Impianti</SubLabel>
             <Row>
-              <Field label="Classe Energetica" third>
+              <Field label="Classe Energetica" half>
                 <Select value={form.classe_energetica} onChange={(e) => update("classe_energetica", e.target.value)} options={CLASSI_ENERGETICHE} />
               </Field>
-              <Field label="Riscaldamento" third>
+              <Field label="Riscaldamento" half>
                 <Select value={form.riscaldamento} onChange={(e) => update("riscaldamento", e.target.value)} options={RISCALDAMENTO} />
-              </Field>
-              <Field label="Tipologia di Riscaldamento" third>
-                <Select value={form.tipologia_riscaldamento} onChange={(e) => update("tipologia_riscaldamento", e.target.value)} options={TIPOLOGIA_RISCALDAMENTO} />
               </Field>
             </Row>
             <Row>
+              <Field label="Tipologia di Riscaldamento" half>
+                <Select value={form.tipologia_riscaldamento} onChange={(e) => update("tipologia_riscaldamento", e.target.value)} options={TIPOLOGIA_RISCALDAMENTO} />
+              </Field>
+              <Field label="Acqua Calda" half>
+                <Select value={form.imp_acqua_calda} onChange={(e) => update("imp_acqua_calda", e.target.value)} options={IMP_ACQUA_CALDA} />
+              </Field>
+            </Row>
+            <Row>
+              <Field label="Imp. Riscaldamento" third>
+                <Select value={form.imp_riscaldamento} onChange={(e) => update("imp_riscaldamento", e.target.value)} options={IMP_RISCALDAMENTO} />
+              </Field>
               <Field label="Imp. Elettrico" third>
                 <Select value={form.imp_elettrico} onChange={(e) => update("imp_elettrico", e.target.value)} options={IMP_ELETTRICO} />
-              </Field>
-              <Field label="Imp. Acqua Calda" third>
-                <Select value={form.imp_acqua_calda} onChange={(e) => update("imp_acqua_calda", e.target.value)} options={IMP_ACQUA_CALDA} />
               </Field>
               <Field label="Imp. Gas" third>
                 <Select value={form.imp_gas} onChange={(e) => update("imp_gas", e.target.value)} options={IMP_GAS} />
@@ -626,6 +758,9 @@ export default function ValutazioneImmobili() {
               <Toggle label="Pannelli Fotovoltaici" checked={form.pannelli_fotovoltaici} onChange={() => update("pannelli_fotovoltaici", !form.pannelli_fotovoltaici)} />
               <Toggle label="Cappotto Interno/Esterno" checked={form.cappotto} onChange={() => update("cappotto", !form.cappotto)} />
               <Toggle label="Caminetto" checked={form.caminetto} onChange={() => update("caminetto", !form.caminetto)} />
+              <Toggle label="Domotica" checked={form.domotica} onChange={() => update("domotica", !form.domotica)} />
+              <Toggle label="Videocitofono" checked={form.videocitofono} onChange={() => update("videocitofono", !form.videocitofono)} />
+              <Toggle label="Porta Blindata" checked={form.porta_blindata} onChange={() => update("porta_blindata", !form.porta_blindata)} />
             </div>
           </div>
         )}
@@ -763,6 +898,115 @@ export default function ValutazioneImmobili() {
           </div>
         )}
 
+        {/* ── STEP 4 (seguito): 5b COMPARABILI · 5c NOSTRE VENDITE · 5d TARGET · 5e ACQUIRENTI ── */}
+        {currentStep === 4 && (() => {
+          const card = { background: "var(--card-bg)", borderRadius: 14, padding: "28px 28px 24px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", marginTop: 20 };
+          const itemBox = { border: "1.5px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14, background: "var(--input-bg)" };
+          const itemHead = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" };
+          const addBtn = (dis) => ({ padding: "12px 20px", borderRadius: 10, border: "2px dashed var(--border)", background: "var(--input-bg)", cursor: dis ? "default" : "pointer", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-body)", color: "var(--text-secondary)", width: "100%", opacity: dis ? 0.5 : 1 });
+          const smallBtn = { background: "#fff", border: "1px solid #fcc", borderRadius: 6, color: "#c33", cursor: "pointer", fontSize: 12, padding: "4px 10px", fontFamily: "var(--font-body)" };
+          const fieldBox = { ...inputStyle, background: "transparent", borderStyle: "dashed", color: "var(--text-secondary)" };
+          const intro = { fontSize: 13, color: "var(--text-secondary)", margin: "0 0 16px", lineHeight: 1.6 };
+          const stimaMq = perMq(mainValue(), form.superficie_commerciale);
+          const compMq = media(form.comparabili.map((c) => perMq(c.prezzo, c.mq)).filter(Boolean));
+          const vendMq = media(form.vendite_zona.map((v) => perMq(v.prezzo, v.mq)).filter(Boolean));
+          const confronto = (label, v) => (
+            <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}: <strong style={{ color: "var(--text-primary)" }}>{v ? `${v.toLocaleString("it-IT")} €/mq` : "—"}</strong></div>
+          );
+          return (<>
+            {/* 5b */}
+            <div style={card}>
+              <SectionTitle step="5b">Comparabili in Zona</SectionTitle>
+              <p style={intro}>Incolla il link di annunci simili su Immobiliare.it, idealista, Casa.it o Subito (fino a 4). Il portale viene riconosciuto dal link; completa i dati principali e carica la foto di copertina dell'annuncio (va bene anche uno screenshot).</p>
+              {form.comparabili.map((c, i) => (
+                <div key={c.id} style={itemBox}>
+                  <div style={itemHead}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <strong style={{ fontSize: 14 }}>Comparabile {i + 1}</strong>
+                      {c.portale && <span style={{ fontSize: 11, fontWeight: 700, color: accent, background: accent + "14", border: `1px solid ${accent}33`, borderRadius: 20, padding: "2px 10px" }}>{c.portale}</span>}
+                      {!c.portale && c.link && <span style={{ fontSize: 11, color: "#b26a00", background: "#fff4e0", borderRadius: 20, padding: "2px 10px" }}>Portale non riconosciuto</span>}
+                    </div>
+                    <button style={smallBtn} onClick={() => removeItem("comparabili", c.id)}>✕ Rimuovi</button>
+                  </div>
+                  <Row>
+                    <Field label="Link all'annuncio" full><input id={`comp-link-${i}`} style={inputStyle} value={c.link} onChange={(e) => updItem("comparabili", c.id, { link: e.target.value, portale: portaleDa(e.target.value) })} placeholder="https://www.immobiliare.it/annunci/..." /></Field>
+                    <Field label="Indirizzo" full><input id={`comp-ind-${i}`} style={inputStyle} value={c.indirizzo !== undefined ? c.indirizzo : (c.titolo || "")} onChange={(e) => updItem("comparabili", c.id, { indirizzo: e.target.value })} placeholder="Es. Via Roma 12" /></Field>
+                    <Field label="Prezzo richiesto (€)" third><input id={`comp-prezzo-${i}`} type="number" style={inputStyle} value={c.prezzo} onChange={(e) => updItem("comparabili", c.id, { prezzo: e.target.value })} placeholder="320000" /></Field>
+                    <Field label="Mq" third><input id={`comp-mq-${i}`} type="number" style={inputStyle} value={c.mq} onChange={(e) => updItem("comparabili", c.id, { mq: e.target.value })} placeholder="100" /></Field>
+                    <Field label="€/mq" third><div style={fieldBox}>{perMq(c.prezzo, c.mq) ? perMq(c.prezzo, c.mq).toLocaleString("it-IT") : "calcolato"}</div></Field>
+                    <Field label="Stanze" third><input id={`comp-stanze-${i}`} type="number" style={inputStyle} value={c.stanze !== undefined ? c.stanze : (c.locali || "")} onChange={(e) => updItem("comparabili", c.id, { stanze: e.target.value })} placeholder="3" /></Field>
+                    <Field label="Piano" third><input id={`comp-piano-${i}`} style={inputStyle} value={c.piano} onChange={(e) => updItem("comparabili", c.id, { piano: e.target.value })} placeholder="2" /></Field>
+                    <Field label="Stato Manutenzione" third><Select value={c.stato} onChange={(e) => updItem("comparabili", c.id, { stato: e.target.value })} options={STATI_CONSERVAZIONE} /></Field>
+                    <Field label="Differenze rispetto al nostro immobile" full><input id={`comp-diff-${i}`} style={inputStyle} value={c.differenze} onChange={(e) => updItem("comparabili", c.id, { differenze: e.target.value })} placeholder="Es. Piano più alto, ma senza ascensore e da ristrutturare" /></Field>
+                  </Row>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+                    {c.foto && <img src={c.foto} alt="" style={{ width: 120, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }} />}
+                    <label style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid var(--border)", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>
+                      📷 {c.foto ? "Cambia foto" : "Carica foto di copertina"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={async (e) => { const f = e.target.files && e.target.files[0]; if (f) updItem("comparabili", c.id, { foto: await resizeImage(f) }); e.target.value = ""; }} />
+                    </label>
+                    {c.foto && <button style={smallBtn} onClick={() => updItem("comparabili", c.id, { foto: null })}>Rimuovi foto</button>}
+                  </div>
+                </div>
+              ))}
+              <button style={addBtn(form.comparabili.length >= 4)} disabled={form.comparabili.length >= 4} onClick={() => addItem("comparabili", { link: "", portale: "", indirizzo: "", prezzo: "", mq: "", stanze: "", piano: "", stato: "", differenze: "", foto: null })}>+ Aggiungi comparabile ({form.comparabili.length}/4)</button>
+              {form.comparabili.length > 0 && (
+                <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginTop: 14, padding: "12px 16px", borderRadius: 10, background: accent + "0a" }}>
+                  {confronto("Media prezzi richiesti", compMq)}
+                  {confronto("Tua stima", stimaMq)}
+                </div>
+              )}
+            </div>
+
+            {/* 5c */}
+            <div style={card}>
+              <SectionTitle step="5c">Le Nostre Vendite in Zona</SectionTitle>
+              <p style={intro}>Immobili venduti dalla vostra agenzia in questa zona negli ultimi mesi. Nel report compariranno come "Le nostre vendite in zona".</p>
+              {form.vendite_zona.map((v, i) => (
+                <div key={v.id} style={itemBox}>
+                  <div style={itemHead}>
+                    <strong style={{ fontSize: 14 }}>Immobile venduto {i + 1}</strong>
+                    <button style={smallBtn} onClick={() => removeItem("vendite_zona", v.id)}>✕ Rimuovi</button>
+                  </div>
+                  <Row>
+                    <Field label="Indirizzo"><input id={`vend-ind-${i}`} style={inputStyle} value={v.indirizzo} onChange={(e) => updItem("vendite_zona", v.id, { indirizzo: e.target.value })} placeholder="Es. Via Valdirivo" /></Field>
+                    <Field label="Mese di vendita"><input id={`vend-data-${i}`} type="month" style={inputStyle} value={v.data} onChange={(e) => updItem("vendite_zona", v.id, { data: e.target.value })} /></Field>
+                    <Field label="Mq" third><input id={`vend-mq-${i}`} type="number" style={inputStyle} value={v.mq} onChange={(e) => updItem("vendite_zona", v.id, { mq: e.target.value })} placeholder="90" /></Field>
+                    <Field label="Stato Manutenzione" third><Select value={v.condizioni} onChange={(e) => updItem("vendite_zona", v.id, { condizioni: e.target.value })} options={STATI_CONSERVAZIONE} /></Field>
+                    <Field label="Prezzo di vendita (€)" third><input id={`vend-prezzo-${i}`} type="number" style={inputStyle} value={v.prezzo} onChange={(e) => updItem("vendite_zona", v.id, { prezzo: e.target.value })} placeholder="280000" /></Field>
+                  </Row>
+                </div>
+              ))}
+              <button style={addBtn(false)} onClick={() => addItem("vendite_zona", { indirizzo: "", mq: "", condizioni: "", prezzo: "", data: "" })}>+ Aggiungi immobile</button>
+              {form.vendite_zona.length > 0 && (
+                <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginTop: 14, padding: "12px 16px", borderRadius: 10, background: accent + "0a" }}>
+                  {confronto("Media delle vostre vendite", vendMq)}
+                  {confronto("Tua stima", stimaMq)}
+                </div>
+              )}
+            </div>
+
+            {/* 5d */}
+            <div style={card}>
+              <SectionTitle step="5d">Analisi del Target del Tuo Immobile</SectionTitle>
+              <p style={intro}>Descrivi chi sono i più probabili acquirenti di questo immobile e perché. Lascia vuoto per non mostrarlo nel report.</p>
+              <textarea id="analisi-target" style={{ ...inputStyle, minHeight: 130, resize: "vertical", lineHeight: 1.7, fontSize: 13 }} value={form.analisi_target} onChange={(e) => update("analisi_target", e.target.value)} placeholder="Es. Giovani coppie al primo acquisto, che con un prezzo contenuto possono permettersi di rimodernare cucina e bagno; investitori interessati all'affitto a studenti e lavoratori..." />
+            </div>
+
+            {/* 5e */}
+            <div style={card}>
+              <SectionTitle step="5e">Acquirenti in Cerca</SectionTitle>
+              <p style={intro}>Quanti acquirenti del vostro archivio cercano un immobile come questo, con un budget compatibile? Nel report comparirà come dato a vostro favore. Lascia vuoto per non mostrarlo.</p>
+              <Row>
+                <Field label="Numero acquirenti" third><input id="acq-numero" type="number" min="0" style={inputStyle} value={form.acquirenti_numero} onChange={(e) => update("acquirenti_numero", e.target.value)} placeholder="Es. 12" /></Field>
+                <Field label="Budget da (€)" third><input id="acq-min" type="number" style={inputStyle} value={form.acquirenti_budget_min} onChange={(e) => update("acquirenti_budget_min", e.target.value)} placeholder="250000" /></Field>
+                <Field label="Budget fino a (€)" third><input id="acq-max" type="number" style={inputStyle} value={form.acquirenti_budget_max} onChange={(e) => update("acquirenti_budget_max", e.target.value)} placeholder="350000" /></Field>
+                <Field label="Cosa cercano (facoltativo)" full><input id="acq-nota" style={inputStyle} value={form.acquirenti_nota} onChange={(e) => update("acquirenti_nota", e.target.value)} placeholder="Es. Trilocali con ascensore in centro, anche da ristrutturare" /></Field>
+              </Row>
+            </div>
+          </>);
+        })()}
+
         {/* ── STEP 5: REVISIONE TESTI ── */}
         {currentStep === 5 && (() => {
           // Auto-generate texts on first visit OR when zona changed
@@ -850,13 +1094,29 @@ export default function ValutazioneImmobili() {
 
               {/* SAVE */}
               <button
-                onClick={async () => { const ok = await saveValutazione(); if (ok) alert("Valutazione salvata con successo! Ora puoi generare il report dalla sezione Report."); }}
+                onClick={async () => { const ok = await saveValutazione(); setSaveMsg(ok === true ? "ok" : ok === "locked" ? "locked" : "err"); }}
                 style={{ marginTop: 8, width: "100%", padding: "16px", borderRadius: 10, border: "none", background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-heading)", letterSpacing: "0.5px", boxShadow: `0 4px 15px ${accent}44`, transition: "transform 0.2s, box-shadow 0.2s" }}
                 onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = `0 6px 20px ${accent}55`; }}
                 onMouseOut={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = `0 4px 15px ${accent}44`; }}
               >
                 💾 Salva Valutazione e Genera Report
               </button>
+              {saveMsg === "ok" && (
+                <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 10, background: "#e8f5e9", border: "1px solid #b8e6cc", color: "#2e7d32", fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <span>✓ Valutazione salvata.</span>
+                  {onSaved && <button onClick={() => onSaved({ ...form, agenzia_logo: logoPreview })} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-body)" }}>📄 Apri il report</button>}
+                </div>
+              )}
+              {saveMsg === "locked" && (
+                <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 10, background: "#fff8e6", border: "1px solid #f3d58a", color: "#8a5a00", fontSize: 14 }}>
+                  🔒 Valutazione aperta da un altro utente: le modifiche non sono state salvate.
+                </div>
+              )}
+              {saveMsg === "err" && (
+                <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 10, background: "#fdecea", border: "1px solid #f5c2c0", color: "#c33", fontSize: 14 }}>
+                  Salvataggio non riuscito. Controlla la connessione e riprova.
+                </div>
+              )}
             </div>
           );
         })()}

@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { REPORT_TEXT_DEFAULTS, REPORT_TEXT_GROUPS, SEGNAPOSTO, mergeTexts, diffFromDefaults } from "./reportTexts";
 
 const DEFAULT_ZONES = [
   { id: 1, nome: "Centro di pregio", descrizione: "" },
@@ -56,8 +57,11 @@ export default function DatiAgenzia() {
   const [newZoneName, setNewZoneName] = useState("");
   const [tab, setTab] = useState("agenzia");
   const [editAgent, setEditAgent] = useState(null);
-  const [agentForm, setAgentForm] = useState({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "" });
+  const [agentForm, setAgentForm] = useState({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "", promessa: "" });
   const [confirmDeleteAgent, setConfirmDeleteAgent] = useState(null);
+  const [confirmDeleteZone, setConfirmDeleteZone] = useState(null);
+  const [reportTexts, setReportTexts] = useState(REPORT_TEXT_DEFAULTS);
+  const [openGroup, setOpenGroup] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const accent = form.agenzia_colore || "#1a3a5c";
@@ -73,6 +77,8 @@ export default function DatiAgenzia() {
         if (mRes && mRes.value) { setForm(f => ({ ...f, testo_mercato: f.testo_mercato || mRes.value })); setSavedMercato(true); }
         const agRes = await window.storage.get("agents_list");
         if (agRes && agRes.value) setAgents(JSON.parse(agRes.value));
+        const rtRes = await window.storage.get("report_texts");
+        if (rtRes && rtRes.value) setReportTexts(mergeTexts(JSON.parse(rtRes.value)));
       } catch (e) {}
       setLoading(false);
     })();
@@ -87,6 +93,20 @@ export default function DatiAgenzia() {
   const addZone = () => { if (!newZoneName.trim()) return; saveZones([...zones, { id: Date.now(), nome: newZoneName.trim(), descrizione: "" }]); setNewZoneName(""); };
   const removeZone = (id) => { saveZones(zones.filter(z => z.id !== id)); if (editZone === id) setEditZone(null); };
 
+  // Titoli e frasi del report: salvataggio automatico delle sole differenze dai predefiniti
+  const rtLatest = useRef(REPORT_TEXT_DEFAULTS);
+  const rtTimer = useRef(null);
+  useEffect(() => { rtLatest.current = reportTexts; }, [reportTexts]);
+  const saveReportText = (k, v) => {
+    const next = { ...rtLatest.current, [k]: v };
+    rtLatest.current = next;
+    setReportTexts(next);
+    clearTimeout(rtTimer.current); // salva quando si smette di scrivere, non a ogni tasto
+    rtTimer.current = setTimeout(() => {
+      Promise.resolve(window.storage.set("report_texts", JSON.stringify(diffFromDefaults(rtLatest.current)))).catch(() => {});
+    }, 600);
+  };
+
   // Agent CRUD
   const saveAgents = async (na) => { setAgents(na); try { await window.storage.set("agents_list", JSON.stringify(na)); } catch (e) {} };
   const saveAgent = () => {
@@ -94,11 +114,11 @@ export default function DatiAgenzia() {
     let na;
     if (editAgent && editAgent.id) na = agents.map(a => a.id === editAgent.id ? { ...editAgent, ...agentForm } : a);
     else na = [...agents, { id: Date.now(), ...agentForm }];
-    saveAgents(na); setEditAgent(null); setAgentForm({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "" });
+    saveAgents(na); setEditAgent(null); setAgentForm({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "", promessa: "" });
   };
   const deleteAgent = (id) => { saveAgents(agents.filter(a => a.id !== id)); setConfirmDeleteAgent(null); };
-  const startEditAgent = (a) => { setEditAgent(a); setAgentForm({ nome: a.nome, cognome: a.cognome, telefono: a.telefono || "", email: a.email || "", foto: a.foto || null, descrizione: a.descrizione || "" }); };
-  const startNewAgent = () => { setEditAgent({}); setAgentForm({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "" }); };
+  const startEditAgent = (a) => { setEditAgent(a); setAgentForm({ nome: a.nome, cognome: a.cognome, telefono: a.telefono || "", email: a.email || "", foto: a.foto || null, descrizione: a.descrizione || "", promessa: a.promessa || "" }); };
+  const startNewAgent = () => { setEditAgent({}); setAgentForm({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "", promessa: "" }); };
 
   const iS = { padding: "9px 12px", border: "1.5px solid #d8dce6", borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: "#f8f9fc", color: "#1a1a2e", outline: "none", boxSizing: "border-box", width: "100%" };
 
@@ -212,11 +232,15 @@ export default function DatiAgenzia() {
                     <div><label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Email</label><input style={iS} value={agentForm.email} onChange={e => setAgentForm({ ...agentForm, email: e.target.value })} placeholder="marco@agenzia.it" /></div>
                   </div>
                   <div><label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Descrizione / Bio</label><textarea style={{ ...iS, minHeight: 70, resize: "vertical", lineHeight: 1.6 }} value={agentForm.descrizione} onChange={e => setAgentForm({ ...agentForm, descrizione: e.target.value })} placeholder="Es. Agente immobiliare dal 2015, specializzato in immobili di pregio nel centro storico di Trieste..." /></div>
+                  <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid #eef0f4" }}>
+                    <label htmlFor="agent-promessa" style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 3, textTransform: "uppercase" }}>Cosa prometto al cliente</label>
+                    <textarea id="agent-promessa" style={{ ...iS, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} value={agentForm.promessa} onChange={e => setAgentForm({ ...agentForm, promessa: e.target.value })} placeholder="Es. Ti aggiornerò ogni settimana sull'andamento della vendita e risponderò sempre entro la giornata..." />
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                 <button onClick={saveAgent} disabled={!agentForm.nome || !agentForm.cognome} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: agentForm.nome && agentForm.cognome ? accent : "#ccc", color: "#fff", cursor: agentForm.nome && agentForm.cognome ? "pointer" : "default", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans'" }}>{editAgent.id ? "Salva modifiche" : "Aggiungi agente"}</button>
-                <button onClick={() => { setEditAgent(null); setAgentForm({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "" }); }} style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans'", color: "#666" }}>Annulla</button>
+                <button onClick={() => { setEditAgent(null); setAgentForm({ nome: "", cognome: "", telefono: "", email: "", foto: null, descrizione: "", promessa: "" }); }} style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans'", color: "#666" }}>Annulla</button>
               </div>
             </div>
           )}
@@ -237,6 +261,7 @@ export default function DatiAgenzia() {
                     <div style={{ fontSize: 16, fontWeight: 700, color: "#1a1a2e" }}>{a.cognome} {a.nome}</div>
                     <div style={{ fontSize: 12, color: "#999", marginTop: 2 }}>{[a.telefono, a.email].filter(Boolean).join(" · ") || "Nessun contatto"}</div>
                     {a.descrizione && <div style={{ fontSize: 12, color: "#666", marginTop: 4, lineHeight: 1.5, maxHeight: 40, overflow: "hidden" }}>{a.descrizione}</div>}
+                    {a.promessa && <div style={{ fontSize: 12, color: "#555", marginTop: 8, lineHeight: 1.5, padding: "6px 10px", borderLeft: `3px solid ${accent}`, background: `${accent}08`, borderRadius: "0 6px 6px 0" }}><span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", color: accent, marginRight: 6 }}>La mia promessa</span><span style={{ fontStyle: "italic" }}>{a.promessa}</span></div>}
                   </div>
                   {/* Actions */}
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -258,6 +283,62 @@ export default function DatiAgenzia() {
 
         {/* ═══ TAB: TESTI REPORT ═══ */}
         {tab === "testi" && (<>
+          {/* Titoli e frasi del report */}
+          <div style={{ background: "#fff", borderRadius: 12, padding: "24px 28px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 12, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: accent }}>Titoli e frasi del report</div>
+              <span style={{ fontSize: 12, color: "#999" }}>{Object.keys(diffFromDefaults(reportTexts)).length} personalizzati · salvataggio automatico</span>
+            </div>
+            <p style={{ fontSize: 12, color: "#999", margin: "0 0 16px", lineHeight: 1.6 }}>
+              Valgono per tutte le nuove valutazioni; quelle già salvate mantengono i testi del momento in cui sono state create. Nelle frasi puoi usare {SEGNAPOSTO.join(", ")}: nel report vengono sostituiti con nome dell'agenzia, zona e data della valutazione.
+            </p>
+            <div style={{ borderRadius: 10, border: "1px solid #eef0f4", overflow: "hidden" }}>
+              {REPORT_TEXT_GROUPS.map((g, gi) => {
+                const mod = g.campi.filter(([k]) => reportTexts[k] !== REPORT_TEXT_DEFAULTS[k]).length;
+                const open = openGroup === g.id;
+                return (
+                  <div key={g.id} style={{ borderBottom: gi < REPORT_TEXT_GROUPS.length - 1 ? "1px solid #f0f1f4" : "none" }}>
+                    <div onClick={() => setOpenGroup(open ? null : g.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", cursor: "pointer", background: open ? `${accent}08` : "transparent" }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: open ? accent : "#333" }}>{gi + 1}. {g.nome}</div>
+                        <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{g.campi.length} {g.campi.length === 1 ? "testo" : "testi"}</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {mod > 0 && <span style={{ fontSize: 10, color: accent, background: `${accent}12`, padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>{mod} personalizzat{mod === 1 ? "o" : "i"}</span>}
+                        <span style={{ fontSize: 16, color: open ? accent : "#ccc", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>›</span>
+                      </div>
+                    </div>
+                    {open && (
+                      <div style={{ padding: "4px 16px 16px", background: `${accent}04` }}>
+                        {g.nota && <p style={{ fontSize: 12, color: "#888", margin: "6px 0 12px", lineHeight: 1.5 }}>{g.nota}</p>}
+                        {g.campi.map(([k, label, max, long]) => {
+                          const v = reportTexts[k] || "";
+                          const over = v.length > max;
+                          const changed = v !== REPORT_TEXT_DEFAULTS[k];
+                          return (
+                            <div key={k} style={{ marginBottom: 12 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
+                                <label htmlFor={`rt-${k}`} style={{ fontSize: 11, fontWeight: 600, color: "#999", textTransform: "uppercase" }}>{label}</label>
+                                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                                  {changed && <button onClick={() => saveReportText(k, REPORT_TEXT_DEFAULTS[k])} style={{ background: "none", border: "none", padding: 0, color: accent, cursor: "pointer", fontSize: 11, fontFamily: "'DM Sans'", textDecoration: "underline" }}>Ripristina testo originale</button>}
+                                  <span style={{ fontSize: 11, color: over ? "#c33" : "#bbb", fontVariantNumeric: "tabular-nums" }}>{v.length}/{max}</span>
+                                </div>
+                              </div>
+                              {long
+                                ? <textarea id={`rt-${k}`} style={{ ...iS, minHeight: 74, resize: "vertical", lineHeight: 1.6, borderColor: over ? "#e8a3a3" : "#d8dce6" }} value={v} onChange={e => saveReportText(k, e.target.value)} />
+                                : <input id={`rt-${k}`} style={{ ...iS, borderColor: over ? "#e8a3a3" : "#d8dce6" }} value={v} onChange={e => saveReportText(k, e.target.value)} />}
+                              {over && <div style={{ fontSize: 11, color: "#c33", marginTop: 3 }}>Testo più lungo del consigliato: nel report potrebbe andare a capo o spostare il resto della pagina.</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Modus operandi */}
           <div style={{ background: "#fff", borderRadius: 12, padding: "24px 28px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -308,7 +389,15 @@ export default function DatiAgenzia() {
                       <div style={{ marginBottom: 10 }}><label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 4, textTransform: "uppercase" }}>Descrizione zona</label><textarea style={{ ...iS, minHeight: 120, resize: "vertical", lineHeight: 1.7 }} value={z.descrizione} onChange={e => updateZone(z.id, "descrizione", e.target.value)} placeholder="Descrivi questa zona..." /></div>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <button onClick={() => setEditZone(null)} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans'", color: "#666" }}>Chiudi</button>
-                        <button onClick={() => { if (confirm(`Eliminare "${z.nome}"?`)) removeZone(z.id); }} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fcc", background: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans'", color: "#c33" }}>🗑️ Elimina zona</button>
+                        {confirmDeleteZone === z.id ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 12, color: "#c33" }}>Eliminare "{z.nome}"?</span>
+                            <button onClick={() => { removeZone(z.id); setConfirmDeleteZone(null); }} style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: "#c33", color: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans'", fontWeight: 600 }}>Elimina</button>
+                            <button onClick={() => setConfirmDeleteZone(null)} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans'", color: "#666" }}>Annulla</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteZone(z.id)} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fcc", background: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans'", color: "#c33" }}>🗑️ Elimina zona</button>
+                        )}
                       </div>
                     </div>
                   )}

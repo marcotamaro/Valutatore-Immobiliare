@@ -17,7 +17,7 @@ const mainVal = (v) => {
   return min || max || 0;
 };
 
-export default function Dashboard({ onViewReport } = {}) {
+export default function Dashboard({ onViewReport, onEdit } = {}) {
   const [list, setList] = useState([]);
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +31,8 @@ export default function Dashboard({ onViewReport } = {}) {
   const [sortBy, setSortBy] = useState("data_desc");
   const [selected, setSelected] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [locks, setLocks] = useState({});     // valutazioni aperte in modifica da altri: id -> da quando
+  const [lockMsg, setLockMsg] = useState({}); // messaggio sotto la scheda: id -> testo
   const [viewReport, setViewReport] = useState(null);
   const [accent, setAccent] = useState("#1a3a5c");
 
@@ -53,18 +55,50 @@ export default function Dashboard({ onViewReport } = {}) {
     })();
   }, []);
 
+  // Valutazioni aperte in modifica da altri utenti (aggiornate ogni 30 secondi)
+  const refreshLocks = async () => {
+    if (!window.storage.locks) return;
+    try { const arr = await window.storage.locks(); setLocks(Object.fromEntries(arr.filter(l => !l.mine).map(l => [String(l.id), l.since]))); } catch (e) {}
+  };
+  useEffect(() => { refreshLocks(); const t = setInterval(refreshLocks, 30000); return () => clearInterval(t); }, []);
+  const fmtOra = (iso) => { try { return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const lockedText = (r, azione) => r.error
+    ? "Non riesco a verificare se la valutazione è libera: controlla la connessione e riprova."
+    : `Valutazione aperta da un altro utente${r.since ? ` dalle ${fmtOra(r.since)}` : ""}${azione ? `: ${azione}` : "."}`;
+
   const saveList = async (newList) => { setList(newList); try { await window.storage.set("valutazioni_list", JSON.stringify(newList)); } catch (e) {} };
   const saveAgents = async (newAgents) => { setAgents(newAgents); try { await window.storage.set("agents_list", JSON.stringify(newAgents)); } catch (e) {} };
 
-  const deleteValutazione = async (id) => { await saveList(list.filter(v => v.id !== id)); setConfirmDelete(null); if (selected && selected.id === id) setSelected(null); };
+  const deleteValutazione = async (id) => {
+    if (window.storage.lock) {
+      const r = await window.storage.lock(id);
+      if (!r.ok) { setConfirmDelete(null); setLockMsg(m => ({ ...m, [id]: lockedText(r, "per ora non si può eliminare.") })); refreshLocks(); return; }
+    }
+    await saveList(list.filter(v => v.id !== id)); setConfirmDelete(null); if (selected && selected.id === id) setSelected(null);
+  };
 
   const duplicateValutazione = async (v) => {
-    const dup = { ...v, id: Date.now(), data_valutazione: new Date().toISOString().split("T")[0], created_at: new Date().toISOString() };
+    const { report_texts, ...rest } = v; // la copia è una nuova valutazione: userà i testi del report attuali
+    const dup = { ...rest, id: Date.now(), data_valutazione: new Date().toISOString().split("T")[0], created_at: new Date().toISOString() };
     await saveList([...list, dup]);
   };
 
   const loadForEdit = async (v) => {
-    try { await window.storage.set("edit_valutazione", JSON.stringify(v)); alert("Valutazione caricata! Apri il form 'valutazione-immobili' — troverai i dati pre-compilati pronti per la modifica."); } catch (e) { alert("Errore nel caricamento."); }
+    setLockMsg(m => ({ ...m, [v.id]: null }));
+    let fresh = v;
+    if (window.storage.lock) {
+      const r = await window.storage.lock(v.id);
+      if (!r.ok) { setLockMsg(m => ({ ...m, [v.id]: lockedText(r) })); refreshLocks(); return; }
+      // versione aggiornata dall'archivio: un collega potrebbe averla modificata dopo l'apertura della Dashboard
+      try {
+        const res = await window.storage.get("valutazioni_list");
+        const l = res ? JSON.parse(res.value) : [];
+        const f = l.find(x => x.id === v.id);
+        if (!f) { window.storage.unlock(v.id); setList(l); setSelected(null); return; }
+        fresh = f;
+      } catch (e) {}
+    }
+    try { await window.storage.set("edit_valutazione", JSON.stringify(fresh)); if (onEdit) onEdit(fresh); } catch (e) {}
   };
 
   // Agent CRUD
@@ -186,6 +220,7 @@ export default function Dashboard({ onViewReport } = {}) {
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", color: accent, background: `${accent}12`, padding: "2px 8px", borderRadius: 4 }}>{v.tipologia}</span>
                         {v.zona && <span style={{ fontSize: 10, fontWeight: 600, color: "#888", background: "#f0f1f4", padding: "2px 8px", borderRadius: 4 }}>{v.zona}</span>}
+                        {locks[String(v.id)] && <span style={{ fontSize: 10, fontWeight: 600, color: "#9a6700", background: "#fff4d6", padding: "2px 8px", borderRadius: 4 }}>🔒 Aperta da un altro utente</span>}
                       </div>
                       <div style={{ fontSize: 15, fontWeight: 700, marginTop: 5, color: "#1a1a2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.indirizzo}{v.civico ? ` ${v.civico}` : ""}</div>
                       <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>{fmtDate(v.data_valutazione)}{v.agente_nome ? ` · ${v.agente_nome}` : ""}{v.superficie_commerciale ? ` · ${v.superficie_commerciale} mq` : ""}{(v.proprietario_cognome || v.proprietario_nome) ? ` · Propr: ${[v.proprietario_cognome, v.proprietario_nome].filter(Boolean).join(" ")}` : ""}</div>
@@ -207,7 +242,7 @@ export default function Dashboard({ onViewReport } = {}) {
                         {v.camere && <div><span style={{ color: "#999" }}>Camere:</span> <strong>{v.camere}</strong></div>}
                         {v.bagni && <div><span style={{ color: "#999" }}>Bagni:</span> <strong>{v.bagni}</strong></div>}
                         {v.piano && <div><span style={{ color: "#999" }}>Piano:</span> <strong>{v.piano}{v.totale_piani ? `/${v.totale_piani}` : ""}</strong></div>}
-                        {v.stato_conservazione && <div><span style={{ color: "#999" }}>Stato:</span> <strong>{v.stato_conservazione}</strong></div>}
+                        {v.stato_conservazione && <div><span style={{ color: "#999" }}>Stato manutenzione:</span> <strong>{v.stato_conservazione}</strong></div>}
                         {v.classe_energetica && <div><span style={{ color: "#999" }}>Classe:</span> <strong>{v.classe_energetica}</strong></div>}
                         {v.tipologia_edificio && <div><span style={{ color: "#999" }}>Edificio:</span> <strong>{v.tipologia_edificio}</strong></div>}
                         {v.vista && <div><span style={{ color: "#999" }}>Vista:</span> <strong>{v.vista}</strong></div>}
@@ -234,6 +269,10 @@ export default function Dashboard({ onViewReport } = {}) {
                         <button onClick={() => duplicateValutazione(v)} style={{ padding: "7px 16px", borderRadius: 8, border: "1.5px solid #d0d5dd", background: "#fff", color: "#555", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans'" }}>📋 Duplica</button>
                         <button onClick={() => setConfirmDelete(v.id)} style={{ padding: "7px 16px", borderRadius: 8, border: "1.5px solid #fcc", background: "#fff", color: "#c33", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans'", marginLeft: "auto" }}>🗑️ Elimina</button>
                       </div>
+
+                      {lockMsg[v.id] && (
+                        <div style={{ marginTop: 10, padding: "10px 14px", background: "#fff8e6", borderRadius: 8, border: "1px solid #f3d58a", fontSize: 12, color: "#8a5a00" }}>🔒 {lockMsg[v.id]}</div>
+                      )}
 
                       {confirmDelete === v.id && (
                         <div style={{ marginTop: 10, padding: "12px 16px", background: "#fff5f5", borderRadius: 8, border: "1px solid #fcc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

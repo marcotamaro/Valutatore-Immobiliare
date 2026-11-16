@@ -7,8 +7,16 @@ import DatiAgenzia from './DatiAgenzia';
 // window.storage (archivio condiviso su database) è impostato in ./storage.js
 
 export default function App() {
-  const [page, setPage] = useState('form');
+  const [page, setPage] = useState('dashboard');
   const [reportData, setReportData] = useState(null);
+  const [reportBack, setReportBack] = useState('dashboard');
+  const [formKey, setFormKey] = useState(0);
+
+  const go = (p) => {
+    if (p === 'form' && page !== 'form') setFormKey(k => k + 1); // form pulito a ogni apertura
+    setPage(p);
+  };
+  const openReport = (v, back) => { setReportData(v); setReportBack(back); setPage('report'); };
 
   const navStyle = (p) => ({
     padding: '10px 20px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
@@ -25,21 +33,24 @@ export default function App() {
           padding: '8px 16px', display: 'flex', gap: 8, justifyContent: 'center',
           boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
         }}>
-          <button style={navStyle('dashboard')} onClick={() => setPage('dashboard')}>📊 Dashboard</button>
-          <button style={navStyle('form')} onClick={() => setPage('form')}>📝 Nuova Valutazione</button>
-          <button style={navStyle('agenzia')} onClick={() => setPage('agenzia')}>🏢 Dati Agenzia</button>
+          <button style={navStyle('dashboard')} onClick={() => go('dashboard')}>📊 Dashboard</button>
+          <button style={navStyle('form')} onClick={() => go('form')}>📝 Nuova Valutazione</button>
+          <button style={navStyle('agenzia')} onClick={() => go('agenzia')}>🏢 Dati Agenzia</button>
           <a href="/logout" style={{ ...navStyle('logout'), textDecoration: 'none', position: 'absolute', right: 16, background: 'transparent', opacity: 0.8 }}>Esci</a>
         </div>
       )}
 
       <div style={{ paddingTop: page !== 'report' ? 52 : 0 }}>
         {page === 'dashboard' && (
-          <Dashboard onViewReport={(v) => { setReportData(v); setPage('report'); }} />
+          <Dashboard
+            onViewReport={(v) => openReport(v, 'dashboard')}
+            onEdit={() => { setFormKey(k => k + 1); setPage('form'); }}
+          />
         )}
-        {page === 'form' && <ValutazioneImmobili />}
+        {page === 'form' && <ValutazioneImmobili key={formKey} onSaved={(v) => openReport(v, 'dashboard')} />}
         {page === 'agenzia' && <DatiAgenzia />}
         {page === 'report' && (
-          <ReportValutazione initialData={reportData} onBack={() => { setReportData(null); setPage('dashboard'); }} />
+          <ReportValutazione initialData={reportData} onBack={() => { setReportData(null); setPage(reportBack); }} />
         )}
       </div>
     </div>
