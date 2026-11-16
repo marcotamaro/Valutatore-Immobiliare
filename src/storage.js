@@ -7,8 +7,8 @@
 // caricata a parte e sostituita con il suo indirizzo (/api/img/...).
 
 const API = '/api';
-const MAX_SIDE = 1800;      // lato massimo delle foto, in pixel
-const JPEG_QUALITY = 0.82;
+const MAX_SIDE = 1400;      // lato massimo delle foto, in pixel (A4 stampato: più che sufficiente)
+const JPEG_QUALITY = 0.78;
 
 async function req(path, opts = {}) {
   const res = await fetch(API + path, { credentials: 'same-origin', ...opts });
