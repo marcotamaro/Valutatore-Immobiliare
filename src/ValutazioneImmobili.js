@@ -199,7 +199,7 @@ const Field = ({ label, children, half, third, full }) => {
   if (full) flex = "1 1 100%";
   return (
     <div style={{ flex, minWidth: third ? 140 : half ? 180 : 200 }}>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 5, fontFamily: "var(--font-body)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</label>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 7, fontFamily: "var(--font-body)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</label>
       {children}
     </div>
   );
@@ -213,7 +213,8 @@ const inputStyle = {
 
 const selectStyle = { ...inputStyle, appearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", paddingRight: 32 };
 
-const Row = ({ children }) => <div style={{ display: "flex", flexWrap: "wrap", gap: "14px 20px" }}>{children}</div>;
+// Righe di campi: 20px tra una riga e l'altra (anche quando i campi vanno a capo)
+const Row = ({ children }) => <div className="vf-row" style={{ display: "flex", flexWrap: "wrap", gap: "20px 20px" }}>{children}</div>;
 
 const Toggle = ({ label, checked, onChange }) => (
   <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "6px 0", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)" }}>
@@ -225,7 +226,7 @@ const Toggle = ({ label, checked, onChange }) => (
 );
 
 const SubLabel = ({ children }) => (
-  <div style={{ margin: "20px 0 6px", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{children}</div>
+  <div style={{ margin: "30px 0 12px", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{children}</div>
 );
 
 const Select = ({ value, onChange, options, placeholder }) => (
@@ -386,6 +387,7 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
 
   return (
     <div style={{ "--accent": accent, "--accent-light": accent + "18", "--accent-mid": accent + "30", "--text-primary": "#1a1a2e", "--text-secondary": "#5a6178", "--border": "#d8dce6", "--input-bg": "#f8f9fc", "--card-bg": "#ffffff", "--bg": "#f0f2f7", "--font-heading": "'Playfair Display', Georgia, serif", "--font-body": "'DM Sans', 'Segoe UI', sans-serif", fontFamily: "var(--font-body)", background: "var(--bg)", minHeight: "100vh", color: "var(--text-primary)" }}>
+      <style>{`.vf-row + .vf-row { margin-top: 20px; }`}</style>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
       {/* HEADER */}
