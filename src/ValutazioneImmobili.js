@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { mergeTexts } from "./reportTexts";
 
 const PERTINENZE_TYPES = [
-  { id: "cantina", label: "Cantina", icon: "🏚️" },
-  { id: "soffitta", label: "Soffitta", icon: "🏠" },
+  { id: "cantina", label: "Cantina", icon: "🏚️", inclusa: true },
+  { id: "soffitta", label: "Soffitta", icon: "🏠", inclusa: true },
   { id: "posto_auto", label: "Posto Auto", icon: "🅿️" },
   { id: "posto_auto_garage", label: "Posto Auto in Garage", icon: "🚗" },
   { id: "box_auto", label: "Box Auto", icon: "🏗️" },
@@ -125,6 +125,10 @@ const resizeImage = (file, max = 900) => new Promise((resolve) => {
 });
 const perMq = (prezzo, mq) => (Number(prezzo) && Number(mq) ? Math.round(Number(prezzo) / Number(mq)) : null);
 const media = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+
+// Pertinenza compresa nel prezzo dell'immobile? (valutazioni salvate prima della domanda:
+// una pertinenza con un valore era quotata a parte, senza valore era compresa)
+const isInclusa = (p) => (p.inclusa !== undefined ? !!p.inclusa : !(Number(p.valore) > 0));
 
 const IMP_ELETTRICO = ["", "Certificato", "Funzionante (non certificato)", "Da rifare (non certificato)"];
 
@@ -313,7 +317,7 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
 
   const addPertinenza = (type) => {
     const p = PERTINENZE_TYPES.find((t) => t.id === type);
-    setForm((f) => ({ ...f, pertinenze: [...f.pertinenze, { id: Date.now(), tipo: type, label: p.label, icon: p.icon, superficie: "", valore: "", note: "" }] }));
+    setForm((f) => ({ ...f, pertinenze: [...f.pertinenze, { id: Date.now(), tipo: type, label: p.label, icon: p.icon, superficie: "", valore: "", note: "", inclusa: !!p.inclusa }] }));
   };
   const updatePertinenza = (id, key, val) => setForm((f) => ({ ...f, pertinenze: f.pertinenze.map((p) => (p.id === id ? { ...p, [key]: val } : p)) }));
   const addItem = (key, obj) => setForm((f) => ({ ...f, [key]: [...(f[key] || []), { id: Date.now() + Math.random(), ...obj }] }));
@@ -323,7 +327,7 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
 
   const totalValue = (which) => {
     const imm = Number(form[which]) || 0;
-    const pert = form.pertinenze.reduce((sum, p) => sum + (Number(p.valore) || 0), 0);
+    const pert = form.pertinenze.filter((p) => !isInclusa(p)).reduce((sum, p) => sum + (Number(p.valore) || 0), 0);
     return imm + pert;
   };
 
@@ -771,7 +775,7 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
         {currentStep === 3 && (
           <div style={{ background: "var(--card-bg)", borderRadius: 14, padding: "28px 28px 24px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", marginTop: 20 }}>
             <SectionTitle step="4">Pertinenze</SectionTitle>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 16px" }}>Aggiungi le pertinenze dell'immobile e il relativo valore.</p>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 16px" }}>Aggiungi le pertinenze dell'immobile e indica se il loro valore è già compreso nel prezzo o va quotato a parte.</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
               {PERTINENZE_TYPES.map((pt) => (
                 <button key={pt.id} onClick={() => addPertinenza(pt.id)}
@@ -796,9 +800,18 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
                   <span style={{ fontWeight: 600, fontSize: 15 }}>{p.icon} {p.label}</span>
                   <button onClick={() => removePertinenza(p.id)} style={{ background: "#fee", border: "1px solid #fcc", borderRadius: 6, color: "#c33", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontFamily: "var(--font-body)" }}>✕ Rimuovi</button>
                 </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 600 }}>Il valore è compreso nel prezzo dell'immobile?</span>
+                  {[[true, "Sì, compreso"], [false, "No, quotato a parte"]].map(([val, txt]) => {
+                    const on = isInclusa(p) === val;
+                    return (
+                      <button key={txt} onClick={() => updatePertinenza(p.id, "inclusa", val)} style={{ padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${on ? accent : "var(--border)"}`, background: on ? accent : "#fff", color: on ? "#fff" : "var(--text-secondary)", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "var(--font-body)" }}>{txt}</button>
+                    );
+                  })}
+                </div>
                 <Row>
                   <Field label="Superficie (mq)" third><input type="number" style={inputStyle} value={p.superficie} onChange={(e) => updatePertinenza(p.id, "superficie", e.target.value)} placeholder="12" /></Field>
-                  <Field label="Valore (€)" third><input type="number" style={inputStyle} value={p.valore} onChange={(e) => updatePertinenza(p.id, "valore", e.target.value)} placeholder="15000" /></Field>
+                  {!isInclusa(p) && <Field label="Valore a parte (€)" third><input type="number" style={inputStyle} value={p.valore} onChange={(e) => updatePertinenza(p.id, "valore", e.target.value)} placeholder="15000" /></Field>}
                   <Field label="Note" third><input style={inputStyle} value={p.note} onChange={(e) => updatePertinenza(p.id, "note", e.target.value)} placeholder="Piano -1, buono stato" /></Field>
                 </Row>
               </div>
@@ -857,7 +870,9 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
                 {form.pertinenze.map((p) => (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
                     <span>{p.icon} {p.label} {p.superficie ? `(${p.superficie} mq)` : ""}</span>
-                    <span style={{ fontWeight: 600 }}>{p.valore ? fmt(p.valore) : "—"}</span>
+                    {isInclusa(p)
+                      ? <span style={{ color: "var(--text-secondary)" }}>compresa nel prezzo</span>
+                      : <span style={{ fontWeight: 600 }}>{p.valore ? `${fmt(p.valore)} a parte` : "valore da inserire"}</span>}
                   </div>
                 ))}
               </div>
@@ -873,7 +888,7 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
               )}
               {form.valore_medio && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: form.valore_max ? 8 : 0 }}>
-                  <span style={{ fontSize: 16, fontWeight: 600, fontFamily: "var(--font-heading)" }}>VALORE TOTALE STIMATO</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, fontFamily: "var(--font-heading)" }}>{form.pertinenze.some((p) => !isInclusa(p) && Number(p.valore) > 0) ? "IMMOBILE + PERTINENZE A PARTE" : "VALORE TOTALE STIMATO"}</span>
                   <span style={{ fontSize: 28, fontWeight: 800, fontFamily: "var(--font-heading)" }}>{fmt(totalValue("valore_medio"))}</span>
                 </div>
               )}

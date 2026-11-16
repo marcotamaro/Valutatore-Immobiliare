@@ -11,6 +11,9 @@ const fmtDate = (d) => {
   catch { return d; }
 };
 const showField = (v) => v && v !== "";
+// Pertinenza compresa nel prezzo dell'immobile? (valutazioni salvate prima della domanda:
+// una pertinenza con un valore era quotata a parte, senza valore era compresa)
+const isInclusa = (p) => (p.inclusa !== undefined ? !!p.inclusa : !(Number(p.valore) > 0));
 const perMq = (prezzo, mq) => (Number(prezzo) && Number(mq) ? Math.round(Number(prezzo) / Number(mq)) : null);
 const fmtMese = (m) => {
   if (!m) return "—";
@@ -121,7 +124,9 @@ export default function ReportValutazione({ initialData = null, onBack = null })
 
   /* ══════ REPORT RENDER ══════ */
   const accent = data.agenzia_colore || "#1a3a5c";
-  const totalPert = data.pertinenze ? data.pertinenze.reduce((s, p) => s + (Number(p.valore) || 0), 0) : 0;
+  // pertinenze quotate a parte (non comprese nel valore stimato dell'immobile)
+  const pertAParte = (data.pertinenze || []).filter(p => !isInclusa(p) && Number(p.valore) > 0);
+  const totalPert = pertAParte.reduce((s, p) => s + Number(p.valore), 0);
 
   const buildingChars = [
     data.anno_costruzione && ["Anno di costruzione", data.anno_costruzione],
@@ -397,14 +402,13 @@ export default function ReportValutazione({ initialData = null, onBack = null })
           {data.pertinenze && data.pertinenze.length > 0 && (<>
             <SH title={TT("titolo_pertinenze")} accent={accent} />
             <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #eef0f4", marginBottom: 20 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.2fr 2fr", padding: "8px 14px", background: accent, fontSize: 10, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                <span>Tipo</span><span>Mq</span><span style={{ textAlign: "right" }}>Valore</span><span style={{ textAlign: "right" }}>Note</span>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2.6fr", padding: "8px 14px", background: accent, fontSize: 10, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <span>Tipo</span><span>Mq</span><span style={{ textAlign: "right" }}>Note</span>
               </div>
               {data.pertinenze.map((p, i) => (
-                <div key={p.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.2fr 2fr", padding: "9px 14px", background: i % 2 === 0 ? "#fafbfd" : "#fff", borderBottom: "1px solid #f0f1f4", fontSize: 13 }}>
+                <div key={p.id} className="dr" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2.6fr", padding: "9px 14px", background: i % 2 === 0 ? "#fafbfd" : "#fff", borderBottom: "1px solid #f0f1f4", fontSize: 13 }}>
                   <span style={{ fontWeight: 600 }}>{p.icon} {p.label}</span>
                   <span style={{ color: "#666" }}>{p.superficie ? `${p.superficie} mq` : "—"}</span>
-                  <span style={{ fontWeight: 600, textAlign: "right" }}>{p.valore ? fmt(p.valore) : "—"}</span>
                   <span style={{ color: "#888", textAlign: "right", fontSize: 12 }}>{p.note || "—"}</span>
                 </div>
               ))}
@@ -579,20 +583,23 @@ export default function ReportValutazione({ initialData = null, onBack = null })
             </div>
           )}
 
-          {/* Pertinenze riepilogo */}
-          {data.pertinenze && data.pertinenze.length > 0 && totalPert > 0 && (
-            <div style={{ background: "#fafbfd", borderRadius: 10, padding: "16px 20px", border: "1px solid #eef0f4", marginBottom: 24 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", color: "#999", marginBottom: 10 }}>Riepilogo con pertinenze</div>
-              {data.pertinenze.filter(p => p.valore).map(p => (
-                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12, color: "#666", borderBottom: "1px solid #f0f0f0" }}>
-                  <span>{p.icon} {p.label}</span><span style={{ fontWeight: 600 }}>{fmt(p.valore)}</span>
+          {/* Pertinenze quotate a parte (non comprese nel valore stimato) */}
+          {pertAParte.length > 0 && (
+            <div className="dr" style={{ borderRadius: 10, padding: "18px 22px", border: `1.5px solid ${accent}30`, background: `${accent}06`, marginBottom: 24 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1.5px", color: accent }}>Pertinenze con quotazione separata</div>
+              <div style={{ fontSize: 12, color: "#888", margin: "4px 0 12px" }}>Non comprese nel valore stimato dell'immobile: il loro valore si aggiunge a quello indicato sopra.</div>
+              {pertAParte.map(p => (
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0", borderBottom: "1px solid #eef0f4", fontSize: 15, color: "#333" }}>
+                  <span>{p.icon} {p.label}{p.superficie ? <span style={{ color: "#999", fontSize: 13 }}> · {p.superficie} mq</span> : null}</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: accent, fontFamily: "'Playfair Display', serif" }}>{fmt(p.valore)}</span>
                 </div>
               ))}
-              <div style={{ borderTop: `2px solid ${accent}20`, marginTop: 8, paddingTop: 10 }}>
-                {data.valore_medio && <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, color: accent, fontWeight: 700 }}>
-                  <span>Totale complessivo</span><span style={{ fontSize: 18, fontFamily: "'Playfair Display', serif" }}>{fmt(Number(data.valore_medio) + totalPert)}</span>
-                </div>}
-              </div>
+              {pertAParte.length > 1 && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingTop: 12, fontSize: 15, fontWeight: 700, color: accent }}>
+                  <span>Totale pertinenze a parte</span>
+                  <span style={{ fontSize: 24, fontWeight: 900, fontFamily: "'Playfair Display', serif" }}>{fmt(totalPert)}</span>
+                </div>
+              )}
             </div>
           )}
 
