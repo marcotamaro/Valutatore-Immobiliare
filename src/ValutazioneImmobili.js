@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { mergeTexts } from "./reportTexts";
+import MappaOSM from "./MappaOSM";
 
 const PERTINENZE_TYPES = [
   { id: "cantina", label: "Cantina", icon: "🏚️", inclusa: true },
@@ -157,7 +158,7 @@ const initialFormData = {
   zona: "", piano: "", totale_piani: "", scala: "",
   catasto_mappa: "", catasto_foglio: "", catasto_particella: "", catasto_subalterno: "", catasto_categoria: "",
   proprietario_nome: "", proprietario_cognome: "", proprietario_telefono: "", proprietario_email: "",
-  lat: null, lng: null, mappa_img: null,
+  lat: null, lng: null, mappa_zoom: null, mappa_img: null,
   superficie_commerciale: "", locali: "", camere: "", bagni: "",
   livelli_immobile: "", altri_vani: [],
   foto_immobile: [],
@@ -541,42 +542,12 @@ export default function ValutazioneImmobili({ onSaved = null } = {}) {
 
             {/* ── MAPPA ── */}
             <SubLabel>Posizione sulla Mappa</SubLabel>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 12px" }}>
-              Carica uno screenshot di Google Maps con la posizione dell'immobile.
-            </p>
-            <div>
-              <input id="mapUpload" type="file" accept="image/jpeg,image/jpg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => update("mappa_img", ev.target.result);
-                reader.readAsDataURL(file);
-              }} />
-              <button
-                onClick={() => document.getElementById("mapUpload")?.click()}
-                style={{
-                  padding: "14px 24px", borderRadius: 10,
-                  border: form.mappa_img ? `2px solid ${accent}40` : "2px dashed var(--border)",
-                  background: form.mappa_img ? `${accent}08` : "var(--input-bg)",
-                  cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "var(--font-body)",
-                  color: form.mappa_img ? accent : "var(--text-secondary)",
-                  display: "flex", alignItems: "center", gap: 8, width: "100%", justifyContent: "center",
-                }}
-              >
-                {form.mappa_img ? "✓ Immagine caricata — Clicca per sostituire" : "📍 Carica screenshot mappa"}
-              </button>
-              {form.mappa_img && (
-                <div style={{ marginTop: 12, position: "relative" }}>
-                  <img src={form.mappa_img} alt="Mappa" style={{ width: "100%", borderRadius: 10, border: "1.5px solid var(--border)", display: "block" }} />
-                  <button
-                    onClick={() => update("mappa_img", null)}
-                    style={{ position: "absolute", top: 8, right: 8, background: "#fee", border: "1px solid #fcc", borderRadius: 6, color: "#c33", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontFamily: "var(--font-body)" }}
-                  >
-                    ✕ Rimuovi
-                  </button>
-                </div>
-              )}
-            </div>
+            <MappaOSM
+              accent={accent}
+              indirizzo={form.indirizzo} civico={form.civico} cap={form.cap} citta={form.citta}
+              lat={form.lat} lng={form.lng} zoom={form.mappa_zoom} img={form.mappa_img}
+              onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+            />
 
             {/* Foto immobile */}
             <SubLabel>Foto Immobile</SubLabel>

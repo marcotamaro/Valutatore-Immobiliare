@@ -163,10 +163,52 @@ async function sha256(buf) {
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
 }
 
+// ── Mappe OpenStreetMap ────────────────────────────────────────────────────────
+// Ricerca dell'indirizzo (Nominatim) e tasselli della mappa, passando dalla cache di Cloudflare.
+// Regole d'uso OSM: identificarsi con lo User-Agent, usare la cache, non fare richieste in massa,
+// citare "© OpenStreetMap contributors" (lo fa l'app sulla mappa e sull'immagine del report).
+// OSM_GEOCODE_URL e OSM_TILE_URL servono solo per le prove in locale.
+const OSM_UA = 'TAMLab-Valutatore/1.0 (+https://valu.tamlab.it)';
+const osmCache = (seconds) => ({ cacheEverything: true, cacheTtlByStatus: { '200-299': seconds, '300-599': 0 } });
+
+async function handleMaps(request, env, url, parts) {
+  if (request.method !== 'GET') return json({ error: 'richiesta non valida' }, 400);
+  if (parts[1] === 'geocode') {
+    const q = (url.searchParams.get('q') || '').trim().slice(0, 200);
+    if (!q) return json({ error: 'indirizzo mancante' }, 400);
+    const u = new URL(env.OSM_GEOCODE_URL || 'https://nominatim.openstreetmap.org/search');
+    const params = {
+      q, format: 'jsonv2', limit: '1', countrycodes: 'it', addressdetails: '1', 'accept-language': 'it',
+      viewbox: '13.45,45.90,14.10,45.50', // preferenza (non obbligo) per la provincia di Trieste
+    };
+    Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+    const r = await fetch(u, { headers: { 'User-Agent': OSM_UA }, cf: osmCache(30 * 86400) });
+    if (!r.ok) return json({ error: 'servizio mappe non disponibile' }, 502);
+    const list = await r.json().catch(() => []);
+    return json((Array.isArray(list) ? list : []).slice(0, 1).map((p) => ({
+      lat: Number(p.lat), lng: Number(p.lon), nome: String(p.display_name || ''),
+      civico: Boolean(p.address && p.address.house_number),
+    })));
+  }
+  // /api/tile/z/x/y
+  const [z, x, y] = parts.slice(2, 5).map(Number);
+  const n = 2 ** z;
+  if (![z, x, y].every(Number.isInteger) || z < 0 || z > 19 || x < 0 || y < 0 || x >= n || y >= n) {
+    return json({ error: 'tassello non valido' }, 400);
+  }
+  const r = await fetch(`${env.OSM_TILE_URL || 'https://tile.openstreetmap.org'}/${z}/${x}/${y}.png`,
+    { headers: { 'User-Agent': OSM_UA }, cf: osmCache(7 * 86400) });
+  if (!r.ok) return new Response('Mappa non disponibile', { status: 502 });
+  return new Response(r.body, {
+    headers: { 'Content-Type': r.headers.get('Content-Type') || 'image/png', 'Cache-Control': 'private, max-age=604800' },
+  });
+}
+
 async function handleApi(request, env, url) {
   const db = env.DB;
-  await ensureSchema(db);
   const parts = url.pathname.split('/').filter(Boolean); // ['api', 'kv'|'img', id?]
+  if (parts[1] === 'geocode' || parts[1] === 'tile') return handleMaps(request, env, url, parts);
+  await ensureSchema(db);
   const [, kind, rawId] = parts;
   const id = rawId ? decodeURIComponent(rawId) : null;
 
