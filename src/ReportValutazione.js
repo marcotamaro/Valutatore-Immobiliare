@@ -202,7 +202,8 @@ export default function ReportValutazione({ initialData = null, onBack = null })
   let pageNo = 1; // copertina = pagina 1; ogni pagina renderizzata chiama nextPage() nell'ordine di stampa
   const nextPage = () => ++pageNo;
 
-  const pg = { maxWidth: 794, minHeight: 1123, margin: "0 auto 24px", background: "#fff", borderRadius: 4, boxShadow: "0 2px 16px rgba(0,0,0,0.08)", overflow: "hidden", position: "relative" };
+  // boxSizing: i margini interni stanno dentro il foglio A4 (794×1123 px), come nella copertina
+  const pg = { boxSizing: "border-box", maxWidth: 794, minHeight: 1123, margin: "0 auto 24px", background: "#fff", borderRadius: 4, boxShadow: "0 2px 16px rgba(0,0,0,0.08)", overflow: "hidden", position: "relative" };
 
   return (
     <div className="rp-root" style={{ fontFamily: "'DM Sans', sans-serif", background: "#e8eaee", minHeight: "100vh", color: "#1a1a2e" }}>
