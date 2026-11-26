@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { REPORT_TEXT_DEFAULTS, mergeTexts, applyText } from "./reportTexts";
+import { descrizioneCategoria } from "./catasto";
 
 const fmt = (v) => {
   if (!v && v !== 0) return "";
@@ -127,6 +128,26 @@ export default function ReportValutazione({ initialData = null, onBack = null })
   // pertinenze quotate a parte (non comprese nel valore stimato dell'immobile)
   const pertAParte = (data.pertinenze || []).filter(p => !isInclusa(p) && Number(p.valore) > 0);
   const totalPert = pertAParte.reduce((s, p) => s + Number(p.valore), 0);
+
+  // Oggetto della valutazione: tipologia, indirizzo e dati catastali (niente piano e mq).
+  // Dati catastali: l'immobile principale più gli altri immobili catastali (cantina, posto auto, terreno…);
+  // gli immobili senza dati e le colonne vuote per tutti non compaiono.
+  const indirizzoCompleto = [
+    [data.indirizzo, data.civico].filter(Boolean).join(" "),
+    [data.cap, data.citta].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const oggettoRows = [
+    data.tipologia && ["Tipologia immobile", data.tipologia],
+    indirizzoCompleto && ["Indirizzo", indirizzoCompleto],
+  ].filter(Boolean);
+  const pieno = (v) => String(v ?? "").trim() !== "";
+  const CAT_COLS = [["mappa", "Mappa", ".55fr"], ["foglio", "Foglio", ".55fr"], ["particella", "Particella", ".75fr"], ["subalterno", "Sub.", ".45fr"], ["categoria", "Categoria", "2.4fr"]];
+  const unitaCatastali = [
+    { nome: data.tipologia || "Immobile principale", mappa: data.catasto_mappa, foglio: data.catasto_foglio, particella: data.catasto_particella, subalterno: data.catasto_subalterno, categoria: data.catasto_categoria },
+    ...(data.catasto_altri || []).map((c) => ({ ...c, nome: String(c.descrizione || "").trim() || "Altro immobile" })),
+  ].filter((u) => CAT_COLS.some(([k]) => pieno(u[k])));
+  const catCols = CAT_COLS.filter(([k]) => unitaCatastali.some((u) => pieno(u[k])));
+  const catGrid = { display: "grid", gridTemplateColumns: ["1.35fr", ...catCols.map((c) => c[2])].join(" "), gap: 8, alignItems: "center" };
 
   const buildingChars = [
     data.anno_costruzione && ["Anno di costruzione", data.anno_costruzione],
@@ -302,15 +323,6 @@ export default function ReportValutazione({ initialData = null, onBack = null })
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 40, padding: "20px 24px", background: "#fafbfd", borderRadius: 10, border: "1px solid #eef0f4" }}>
-            <div style={{ fontSize: 13, color: "#666", lineHeight: 1.7 }}>
-              <strong style={{ color: accent }}>{data.tipologia}</strong> — {data.indirizzo}{data.civico ? ` ${data.civico}` : ""}, {data.cap} {data.citta}
-              {data.zona && ` — ${data.zona}`}
-            </div>
-            <div style={{ fontSize: 12, color: "#999", marginTop: 8 }}>
-              Valutazione del {fmtDate(data.data_valutazione)}{data.agente_nome ? ` · Agente: ${data.agente_nome}` : ""}
-            </div>
-          </div>
           <PN n={nextPage()} />
         </div>
 
@@ -321,26 +333,30 @@ export default function ReportValutazione({ initialData = null, onBack = null })
           {!data.agenzia_logo && data.agenzia_nome && <div style={{ textAlign: "center", marginBottom: 32, fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: accent }}>{data.agenzia_nome}</div>}
 
           <SH title={TT("titolo_oggetto")} accent={accent} />
-          <div style={{ background: "#fafbfd", borderRadius: 10, padding: "20px 24px", marginBottom: 32, border: "1px solid #eef0f4" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "1.5px", color: accent, marginBottom: 6 }}>{data.tipologia}</div>
-            <h2 style={{ margin: "0 0 6px", fontSize: 24, fontFamily: "'Playfair Display', serif" }}>{data.indirizzo}{data.civico ? `, ${data.civico}` : ""}</h2>
-            <div style={{ fontSize: 14, color: "#666", lineHeight: 1.6 }}>
-              {[data.cap, data.citta].filter(Boolean).join(" ")}{data.zona && ` — Zona: ${data.zona}`}
-              {data.piano && ` · Piano ${data.piano}`}{data.totale_piani && ` di ${data.totale_piani}`}
-              {data.superficie_commerciale && ` · ${data.superficie_commerciale} mq`}
+          {(oggettoRows.length > 0 || unitaCatastali.length > 0) && (
+            <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #eef0f4", marginBottom: 32 }}>
+              {oggettoRows.map(([l, v], i) => <DR key={i} label={l} value={v} even={i % 2 === 0} />)}
+              {unitaCatastali.length > 0 && (<>
+                <div style={{ ...catGrid, padding: "7px 14px 6px", background: "#f3f5f8", borderBottom: "1px solid #e9ecf1", fontSize: 9.5, fontWeight: 700, color: "#8a90a0", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                  <span>Dati catastali</span>
+                  {catCols.map(([k, l]) => <span key={k}>{l}</span>)}
+                </div>
+                {unitaCatastali.map((u, i) => (
+                  <div key={i} className="dr" style={{ ...catGrid, padding: "8px 14px", background: (oggettoRows.length + i) % 2 === 0 ? "#fafbfd" : "#fff", borderBottom: "1px solid #f0f1f4", fontSize: 13 }}>
+                    <span style={{ color: "#777" }}>{u.nome}</span>
+                    {catCols.map(([k]) => k === "categoria" ? (
+                      <span key={k}>
+                        <span style={{ fontWeight: 600, color: "#2a2a3e" }}>{pieno(u.categoria) ? u.categoria : "—"}</span>
+                        {descrizioneCategoria(u.categoria) && <span style={{ display: "block", fontSize: 11, color: "#888", marginTop: 1, lineHeight: 1.35 }}>{descrizioneCategoria(u.categoria)}</span>}
+                      </span>
+                    ) : (
+                      <span key={k} style={{ fontWeight: 600, color: "#2a2a3e" }}>{pieno(u[k]) ? u[k] : "—"}</span>
+                    ))}
+                  </div>
+                ))}
+              </>)}
             </div>
-            {/* Dati Catastali */}
-            {(data.catasto_foglio || data.catasto_particella || data.catasto_categoria) && (
-              <div style={{ fontSize: 12, color: "#888", marginTop: 8, padding: "8px 12px", background: "#f5f6f8", borderRadius: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 600, color: "#666" }}>Dati catastali:</span>
-                {data.catasto_mappa && <span>Mappa {data.catasto_mappa}</span>}
-                {data.catasto_foglio && <span>Foglio {data.catasto_foglio}</span>}
-                {data.catasto_particella && <span>Part. {data.catasto_particella}</span>}
-                {data.catasto_subalterno && <span>Sub. {data.catasto_subalterno}</span>}
-                {data.catasto_categoria && <span>Cat. {data.catasto_categoria}</span>}
-              </div>
-            )}
-          </div>
+          )}
 
           {data.agenzia_modus_operandi && (<>
             <SH title={TT("titolo_metodologia")} accent={accent} />
