@@ -416,21 +416,28 @@ export default function ReportValutazione({ initialData = null, onBack = null })
             {propChars.map(([l, v], i) => <DR key={i} label={l} value={v} even={i % 2 === 0} />)}
           </div>
 
-          {data.pertinenze && data.pertinenze.length > 0 && (<>
-            <SH title={TT("titolo_pertinenze")} accent={accent} />
-            <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #eef0f4", marginBottom: 20 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2.6fr", padding: "8px 14px", background: accent, fontSize: 10, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                <span>Tipo</span><span>Mq</span><span style={{ textAlign: "right" }}>Note</span>
-              </div>
-              {data.pertinenze.map((p, i) => (
-                <div key={p.id} className="dr" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2.6fr", padding: "9px 14px", background: i % 2 === 0 ? "#fafbfd" : "#fff", borderBottom: "1px solid #f0f1f4", fontSize: 13 }}>
-                  <span style={{ fontWeight: 600 }}>{p.icon} {p.label}</span>
-                  <span style={{ color: "#666" }}>{p.superficie ? `${p.superficie} mq` : "—"}</span>
-                  <span style={{ color: "#888", textAlign: "right", fontSize: 12 }}>{p.note || "—"}</span>
+          {data.pertinenze && data.pertinenze.length > 0 && (() => {
+            // Stesso stile dei dati catastali: intestazione grigio chiaro, nome a sinistra, dati in grassetto;
+            // le colonne vuote per tutte le pertinenze non compaiono
+            const conMq = data.pertinenze.some((p) => Number(p.superficie) > 0);
+            const conNote = data.pertinenze.some((p) => String(p.note || "").trim());
+            const grid = { display: "grid", gridTemplateColumns: "1.4fr .7fr 2.2fr", gap: 8, alignItems: "center" };
+            return (<>
+              <SH title={TT("titolo_pertinenze")} accent={accent} />
+              <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #eef0f4", marginBottom: 20 }}>
+                <div style={{ ...grid, padding: "7px 14px 6px", background: "#f3f5f8", borderBottom: "1px solid #e9ecf1", fontSize: 9.5, fontWeight: 700, color: "#8a90a0", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                  <span>Tipo</span><span>{conMq ? "Superficie" : ""}</span><span>{conNote ? "Note" : ""}</span>
                 </div>
-              ))}
-            </div>
-          </>)}
+                {data.pertinenze.map((p, i) => (
+                  <div key={p.id} className="dr" style={{ ...grid, padding: "8px 14px", background: i % 2 === 0 ? "#fafbfd" : "#fff", borderBottom: "1px solid #f0f1f4", fontSize: 13 }}>
+                    <span style={{ color: "#777" }}>{p.label}</span>
+                    <span style={{ fontWeight: 600, color: "#2a2a3e" }}>{conMq ? (Number(p.superficie) > 0 ? `${p.superficie} mq` : "—") : ""}</span>
+                    <span style={{ color: "#555", fontSize: 12.5, lineHeight: 1.45 }}>{conNote ? (String(p.note || "").trim() || "—") : ""}</span>
+                  </div>
+                ))}
+              </div>
+            </>);
+          })()}
 
           <PN n={nextPage()} />
         </div>
